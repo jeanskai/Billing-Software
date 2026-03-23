@@ -413,47 +413,49 @@ export default function StockIn() {
                     <span>Total</span>
                     <span></span>
                   </div>
-                  {lines.map((line, index) => (
-                    <div className="table-row stock-line-row" key={`line-${index}`}>
-                      <select
-                        value={line.productId}
-                        onChange={(event) => handleLineChange(index, "productId", event.target.value)}
-                      >
-                        <option value="">Select product</option>
-                        {products.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.name || product.product_name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        min="1"
-                        value={line.quantity}
-                        onChange={(event) => handleLineChange(index, "quantity", event.target.value)}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.purchasePrice}
-                        onChange={(event) => handleLineChange(index, "purchasePrice", event.target.value)}
-                      />
-                      <div className="stock-total">{currency.format(totals[index] || 0)}</div>
-                      <button
-                        className="icon-btn delete"
-                        type="button"
-                        onClick={() => removeLine(index)}
-                        disabled={lines.length === 1}
-                        title="Remove line"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18"></line>
-                          <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
+                  <div className="stock-lines-scroll">
+                    {lines.map((line, index) => (
+                      <div className="table-row stock-line-row" key={`line-${index}`}>
+                        <select
+                          value={line.productId}
+                          onChange={(event) => handleLineChange(index, "productId", event.target.value)}
+                        >
+                          <option value="">Select product</option>
+                          {products.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {product.name || product.product_name}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min="1"
+                          value={line.quantity}
+                          onChange={(event) => handleLineChange(index, "quantity", event.target.value)}
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={line.purchasePrice}
+                          onChange={(event) => handleLineChange(index, "purchasePrice", event.target.value)}
+                        />
+                        <div className="stock-total">{currency.format(totals[index] || 0)}</div>
+                        <button
+                          className="icon-btn delete"
+                          type="button"
+                          onClick={() => removeLine(index)}
+                          disabled={lines.length === 1}
+                          title="Remove line"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <button type="button" className="btn-secondary" onClick={addLine}>
                   Add Product

@@ -1164,7 +1164,7 @@ export default function Product() {
 
                         {showStockInModal && (
                             <div className="modal-overlay" onClick={() => !isSavingStockIn && setShowStockInModal(false)}>
-                                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                                <div className="modal-content stock-modal-content" onClick={(e) => e.stopPropagation()}>
                                     <div className="card">
                                         <div className="card-head">
                                             <div>
@@ -1208,49 +1208,51 @@ export default function Product() {
                                                         <span>Total</span>
                                                         <span></span>
                                                     </div>
-                                                    {stockInLines.map((line, index) => (
-                                                        <div className="table-row stock-line-row" key={`stock-line-${index}`}>
-                                                            <select
-                                                                value={line.productId}
-                                                                onChange={(e) => handleStockInLineChange(index, "productId", e.target.value)}
-                                                            >
-                                                                <option value="">Select product</option>
-                                                                {products.map((product) => (
-                                                                    <option key={product.id} value={product.id}>
-                                                                        {product.name || product.product_name}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                            <input
-                                                                type="number"
-                                                                min="1"
-                                                                value={line.quantity}
-                                                                onChange={(e) => handleStockInLineChange(index, "quantity", e.target.value)}
-                                                            />
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                step="0.01"
-                                                                value={line.purchasePrice}
-                                                                onChange={(e) => handleStockInLineChange(index, "purchasePrice", e.target.value)}
-                                                            />
-                                                            <div className="stock-total">
-                                                                {currency.format((Number(line.quantity) || 0) * (Number(line.purchasePrice) || 0))}
+                                                    <div className="stock-lines-scroll">
+                                                        {stockInLines.map((line, index) => (
+                                                            <div className="table-row stock-line-row" key={`stock-line-${index}`}>
+                                                                <select
+                                                                    value={line.productId}
+                                                                    onChange={(e) => handleStockInLineChange(index, "productId", e.target.value)}
+                                                                >
+                                                                    <option value="">Select product</option>
+                                                                    {products.map((product) => (
+                                                                        <option key={product.id} value={product.id}>
+                                                                            {product.name || product.product_name}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                                <input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    value={line.quantity}
+                                                                    onChange={(e) => handleStockInLineChange(index, "quantity", e.target.value)}
+                                                                />
+                                                                <input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    value={line.purchasePrice}
+                                                                    onChange={(e) => handleStockInLineChange(index, "purchasePrice", e.target.value)}
+                                                                />
+                                                                <div className="stock-total">
+                                                                    {currency.format((Number(line.quantity) || 0) * (Number(line.purchasePrice) || 0))}
+                                                                </div>
+                                                                <button
+                                                                    className="icon-btn delete"
+                                                                    type="button"
+                                                                    onClick={() => removeStockInLine(index)}
+                                                                    disabled={stockInLines.length === 1}
+                                                                    title="Remove line"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                                                    </svg>
+                                                                </button>
                                                             </div>
-                                                            <button
-                                                                className="icon-btn delete"
-                                                                type="button"
-                                                                onClick={() => removeStockInLine(index)}
-                                                                disabled={stockInLines.length === 1}
-                                                                title="Remove line"
-                                                            >
-                                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                                                </svg>
-                                                            </button>
-                                                        </div>
-                                                    ))}
+                                                        ))}
+                                                    </div>
                                                 </div>
                                                 <button type="button" className="btn-secondary" onClick={addStockInLine}>
                                                     Add Product Line

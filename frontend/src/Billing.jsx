@@ -121,6 +121,12 @@ const normalizeCustomer = (customer) => ({
 const hasCustomerData = (customer) =>
   Boolean((customer?.name || "").trim() || (customer?.email || "").trim() || (customer?.phone || "").trim());
 
+const createProductPickerRow = () => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  value: "",
+  quantity: "1",
+});
+
 export default function Billing() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -153,7 +159,7 @@ export default function Billing() {
   const [receivePaymentMethod, setReceivePaymentMethod] = useState("cash");
   const [isReceivingPayment, setIsReceivingPayment] = useState(false);
   const [taxType, setTaxType] = useState("cgst_sgst");
-  const [quickProductId, setQuickProductId] = useState("");
+  const [productPickerRows, setProductPickerRows] = useState(() => [createProductPickerRow()]);
   const [selectedReturn, setSelectedReturn] = useState(null);
   const [showReturnDetailsModal, setShowReturnDetailsModal] = useState(false);
   const [showReturnProcessModal, setShowReturnProcessModal] = useState(false);
@@ -246,18 +252,33 @@ export default function Billing() {
     const normalizedDiscountType = normalizeDiscountType(discountType);
     const discountValueNumber = Number(discountValue || 0);
 
-    const baseLines = cartItems.map((line) => {
-      const qty = Number(line.quantity) || 0;
-      const price = Number(line.price) || 0;
+    const baseLines = productPickerRows
+      .map((row) => {
+        const matchedProduct = products.find((product) => String(product.id) === row.value);
+        if (!matchedProduct) {
+          return null;
+        }
+
+        const qty = Number(row.quantity) || 0;
+        const price = Number(matchedProduct.price) || 0;
       const lineSubTotal = roundCurrency(qty * price);
-      const taxRate = Number(taxByCategory.get(line.category) || 18);
-      return {
-        ...line,
+        const taxRate = Number(taxByCategory.get(matchedProduct.category) || 18);
+
+        return {
+        rowId: row.id,
+        productId: matchedProduct.id,
+        name: matchedProduct.name,
+        sku: matchedProduct.sku,
+        barcode: matchedProduct.barcode,
+        category: matchedProduct.category,
+        price,
+        availableStock: Number(matchedProduct.stock) || 0,
         quantity: qty,
         lineSubTotal,
         taxRate,
-      };
-    });
+        };
+      })
+      .filter(Boolean);
 
     const subTotal = roundCurrency(baseLines.reduce((sum, line) => sum + line.lineSubTotal, 0));
 
@@ -327,7 +348,7 @@ export default function Billing() {
       vat,
       grandTotal,
     };
-  }, [cartItems, discountType, discountValue, taxByCategory, taxType]);
+  }, [productPickerRows, products, discountType, discountValue, taxByCategory, taxType]);
 
   const addToCart = (product) => {
     if (!product || product.stock <= 0) {
@@ -335,62 +356,45 @@ export default function Billing() {
       return;
     }
 
-    setCartItems((prev) => {
-      const existing = prev.find((line) => line.productId === product.id);
-      if (existing) {
-        const nextQty = existing.quantity + 1;
-        if (nextQty > product.stock) {
-          setStatus({ state: "error", message: `Only ${product.stock} units available in stock.` });
-          return prev;
-        }
-
-        return prev.map((line) =>
-          line.productId === product.id ? { ...line, quantity: nextQty } : line
-        );
-      }
-
-      return [
-        ...prev,
-        {
-          productId: product.id,
-          name: product.name,
-          sku: product.sku,
-          barcode: product.barcode,
-          category: product.category,
-          price: Number(product.price) || 0,
-          availableStock: Number(product.stock) || 0,
-          quantity: 1,
-        },
-      ];
-    });
+    setProductPickerRows((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        value: String(product.id),
+        quantity: "1",
+      },
+    ]);
 
     setStatus({ state: "success", message: `${product.name} added to cart.` });
     setTimeout(() => setStatus({ state: "idle", message: "" }), 1800);
   };
 
-  const updateCartQuantity = (productId, value) => {
+  const updateCartQuantity = (rowId, value) => {
     const quantity = Number(value);
 
-    setCartItems((prev) =>
-      prev.map((line) => {
-        if (line.productId !== productId) {
-          return line;
+    setProductPickerRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== rowId) {
+          return row;
         }
 
         if (Number.isNaN(quantity) || quantity <= 0) {
-          return { ...line, quantity: 1 };
+          return { ...row, quantity: "1" };
         }
 
         return {
-          ...line,
-          quantity: Math.min(quantity, line.availableStock),
+          ...row,
+          quantity: String(quantity),
         };
       })
     );
   };
 
-  const removeFromCart = (productId) => {
-    setCartItems((prev) => prev.filter((line) => line.productId !== productId));
+  const removeFromCart = (rowId) => {
+    setProductPickerRows((prev) => {
+      const nextRows = prev.filter((row) => row.id !== rowId);
+      return nextRows.length ? nextRows : [createProductPickerRow()];
+    });
   };
 
   const handleBarcodeAdd = async () => {
@@ -414,19 +418,20 @@ export default function Billing() {
     }
   };
 
-  const handleQuickAddProduct = () => {
-    if (!quickProductId) {
-      return;
-    }
+  const handleAddProductPickerRow = () => {
+    setProductPickerRows((prev) => [...prev, createProductPickerRow()]);
+  };
 
-    const matchedProduct = products.find((product) => String(product.id) === quickProductId);
-    if (!matchedProduct) {
-      setStatus({ state: "error", message: "Selected product not found." });
-      return;
-    }
+  const handleProductPickerChange = (rowId, value) => {
+    setProductPickerRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== rowId) {
+          return row;
+        }
 
-    addToCart(matchedProduct);
-    setQuickProductId("");
+        return { ...row, value };
+      })
+    );
   };
 
   const renderInvoicePrint = (invoiceData, fallbackCustomer, printWindow) => {
@@ -878,7 +883,7 @@ export default function Billing() {
       return;
     }
 
-    if (!cartItems.length) {
+    if (!cartWithTotals.lines.length) {
       setStatus({ state: "error", message: "Add at least one item to generate invoice." });
       return;
     }
@@ -905,7 +910,7 @@ export default function Billing() {
         },
         body: JSON.stringify({
           customerId: selectedInvoiceCustomer.id,
-          items: cartItems.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+          items: cartWithTotals.lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
           discountType: normalizeDiscountType(discountType),
           discountValue: Number(discountValue || 0),
           paymentMethod,
@@ -925,6 +930,7 @@ export default function Billing() {
 
       setLastInvoice(payload.invoice);
       setCartItems([]);
+      setProductPickerRows([createProductPickerRow()]);
       setPaidAmount("0");
       setDiscountType("none");
       setDiscountValue("0");
@@ -1139,6 +1145,7 @@ export default function Billing() {
   const openCreateInvoiceFlow = () => {
     setSelectedInvoiceCustomer(null);
     setPaidAmount("0");
+    setProductPickerRows([createProductPickerRow()]);
     setShowInvoiceModal(true);
   };
 
@@ -1151,7 +1158,7 @@ export default function Billing() {
   return (
     <div className="billing-page">
       <div className="billing-header">
-        
+
         <div className="billing-stats">
           <div className="stat-card billing-stat-card">
             <div className="stat-value billing-stat-products">{products.length}</div>
@@ -1195,7 +1202,7 @@ export default function Billing() {
         <section className="card">
           <div className="card-head">
             <div>
-              <p className="card-label">All Invoices</p>
+              
               <h3>Invoice History ({sales.length})</h3>
             </div>
             <button type="button" className="add-product-btn" onClick={openCreateInvoiceFlow}>
@@ -1314,7 +1321,7 @@ export default function Billing() {
         <section className="card">
           <div className="card-head">
             <div>
-              <p className="card-label">All Returns</p>
+              
               <h3>Return History ({returns.length})</h3>
             </div>
             <button type="button" className="add-product-btn" onClick={() => setShowReturnProcessModal(true)}>
@@ -1446,28 +1453,16 @@ export default function Billing() {
                     ))}
                   </select>
                 </label>
-
-                <label className="product-field">
-                  <span>Select Product</span>
-                  <select
-                    value={quickProductId}
-                    onChange={(event) => setQuickProductId(event.target.value)}
-                  >
-                    <option value="">Choose product</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={String(product.id)}>
-                        {product.name || "Unnamed Product"} • {formatInr.format(product.price || 0)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
               </div>
 
               <section className="create-invoice-layout">
-                <div className="card billing-cart">
+                <div className="card billing-cart billing-cart-lines">
+                  {(() => {
+                    const cartLineLookup = new Map(cartWithTotals.lines.map((line) => [line.rowId, line]));
 
+                    return (
                   <div className="table billing-cart-table">
-                    <div className="table-row header billing-cart-row">
+                    <div className="table-row header billing-cart-line-row">
                       <span>Item</span>
                       <span className="right">Qty</span>
                       <span className="right">Price</span>
@@ -1475,44 +1470,56 @@ export default function Billing() {
                       <span className="right">Total</span>
                       <span className="right">Action</span>
                     </div>
-                    {cartWithTotals.lines.length === 0 && <div className="table-row empty">No items in cart.</div>}
-                    {cartWithTotals.lines.map((line) => (
-                      <div className="table-row billing-cart-row" key={line.productId}>
-                        <span>{line.name}</span>
-                        <span className="right">
-                          <input
-                            type="number"
-                            min="1"
-                            max={line.availableStock}
-                            value={line.quantity}
-                            onChange={(event) => updateCartQuantity(line.productId, event.target.value)}
-                            className="billing-qty-input"
-                          />
-                        </span>
-                        <span className="right">{formatInr.format(line.price)}</span>
-                        <span className="right">{formatInr.format(line.taxAmount || 0)}</span>
-                        <span className="right">{formatInr.format(line.lineTotal || 0)}</span>
-                        <span className="right">
-                          <button type="button" className="icon-btn danger" onClick={() => removeFromCart(line.productId)} title="Remove from cart">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <line x1="18" y1="6" x2="6" y2="18"></line>
-                              <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                          </button>
-                        </span>
-                      </div>
-                    ))}
+                    {productPickerRows.map((row) => {
+                      const selectedProduct = products.find((product) => String(product.id) === row.value);
+                      const line = cartLineLookup.get(row.id);
+
+                      return (
+                      <div className="table-row billing-cart-line-row billing-cart-picker-row" key={row.id}>
+                        <label className="product-field invoice-product-select">
+                          <span>Select Product</span>
+                          <select
+                            value={row.value}
+                            onChange={(event) => handleProductPickerChange(row.id, event.target.value)}
+                          >
+                            <option value="">Select product</option>
+                            {products.map((product) => (
+                              <option key={product.id} value={String(product.id)}>
+                                {product.name || "Unnamed Product"} • {formatInr.format(product.price || 0)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                          <span className="right">
+                            <input
+                              type="number"
+                              min="1"
+                              max={line?.availableStock || undefined}
+                              value={row.quantity}
+                              onChange={(event) => updateCartQuantity(row.id, event.target.value)}
+                              className="billing-qty-input"
+                            />
+                          </span>
+                          <div className="billing-line-box billing-line-value billing-picker-meta">{line ? formatInr.format(line.price) : "-"}</div>
+                          <div className="billing-line-box billing-line-value billing-picker-meta">{line ? formatInr.format(line.taxAmount || 0) : "-"}</div>
+                          <div className="billing-line-box billing-line-value billing-picker-meta">{line ? formatInr.format(line.lineTotal || 0) : "-"}</div>
+                          <span className="right">
+                            <button type="button" className="icon-btn danger" onClick={() => removeFromCart(row.id)} title="Remove from cart" disabled={productPickerRows.length === 1}>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                              </svg>
+                            </button>
+                          </span>
+                        </div>
+                        );
+                      })}
                   </div>
-                  <div className="invoice-product-row">
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={handleQuickAddProduct}
-                      disabled={!quickProductId}
-                    >
-                      Add Product
-                    </button>
-                  </div>
+                    );
+                  })()}
+                  <button type="button" className="btn-secondary billing-cart-add-btn" onClick={handleAddProductPickerRow}>
+                    Add Product Line
+                  </button>
                 </div>
 
 
@@ -1614,345 +1621,345 @@ export default function Billing() {
           </div>
         </div>
       )}
-{/* Sale Return Modal */ }
-{
-  showReturnProcessModal && (
-    <div className="modal-overlay" onClick={() => setShowReturnProcessModal(false)}>
-      <div className="modal-content billing-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Process Sale Return</h2>
-          <button type="button" className="modal-close" onClick={() => {
-            setShowReturnProcessModal(false);
-            setSelectedSaleId("");
-            setSelectedSale(null);
-            setReturnQuantities({});
-            setReturnReason("");
-          }}>
-            ×
-          </button>
-        </div>
-        <div className="modal-body">
-          <div className="billing-return-controls">
-            <label className="product-field">
-              <span>Select Sale</span>
-              <select value={selectedSaleId} onChange={(event) => handleSaleSelect(event.target.value)}>
-                <option value="">Choose sale/invoice</option>
-                {sales.map((sale) => (
-                  <option key={sale.id} value={sale.id}>
-                    {sale.invoiceNo} • {formatInr.format(sale.grandTotal || 0)}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="product-field">
-              <span>Refund Method</span>
-              <select value={refundMethod} onChange={(event) => setRefundMethod(event.target.value)}>
-                {paymentMethods.map((method) => (
-                  <option key={method} value={method}>
-                    {method.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="product-field billing-return-reason">
-              <span>Reason</span>
-              <input value={returnReason} onChange={(event) => setReturnReason(event.target.value)} placeholder="Optional" />
-            </label>
-          </div>
-
-          {selectedSale && (
-            <div className="table">
-              <div className="table-row header billing-return-row">
-                <span>Item</span>
-                <span className="right">Sold Qty</span>
-                <span className="right">Return Qty</span>
-              </div>
-              {(selectedSale.items || []).map((item) => (
-                <div className="table-row billing-return-row" key={`${item.productId}-${item.productName}`}>
-                  <span>{item.productName}</span>
-                  <span className="right">{item.quantity}</span>
-                  <span className="right">
-                    <input
-                      type="number"
-                      min="0"
-                      max={item.quantity}
-                      className="billing-qty-input"
-                      value={returnQuantities[item.productId] || "0"}
-                      onChange={(event) =>
-                        setReturnQuantities((prev) => ({
-                          ...prev,
-                          [item.productId]: event.target.value,
-                        }))
-                      }
-                    />
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="billing-actions">
-            <button type="button" className="cta" onClick={submitReturn} disabled={isReturning || !selectedSale}>
-              {isReturning ? "Processing..." : "Process Sale Return"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-{/* Invoice Details Modal */ }
-{
-  showInvoiceDetailsModal && selectedInvoice && (
-    <div className="modal-overlay" onClick={() => setShowInvoiceDetailsModal(false)}>
-      <div className="modal-content invoice-details-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Invoice Details</h2>
-          <button type="button" className="modal-close" onClick={() => setShowInvoiceDetailsModal(false)}>
-            ×
-          </button>
-        </div>
-        <div className="modal-body">
-          <div className="invoice-customer-section">
-            <div className="invoice-customer-row">
-              <span>Customer:</span>
-              <span>{selectedInvoice.customer?.name || "-"}</span>
-            </div>
-            <div className="invoice-customer-row">
-              <span>Email:</span>
-              <span>{selectedInvoice.customer?.email || "-"}</span>
-            </div>
-            <div className="invoice-customer-row">
-              <span>Phone:</span>
-              <span>{selectedInvoice.customer?.phone || "-"}</span>
-            </div>
-          </div>
-
-          <div className="invoice-items-section">
-            <h3>Items ({(selectedInvoice.items || []).length})</h3>
-            <div className="table">
-              <div className="table-row header">
-                <span>Product</span>
-                <span>Quantity</span>
-                <span>Price</span>
-                <span>Tax</span>
-                <span>Total</span>
-              </div>
-              {(selectedInvoice.items || []).length === 0 ? (
-                <div className="table-row empty">
-                  <span>No items found.</span>
-                </div>
-              ) : (
-                (selectedInvoice.items || []).map((item, idx) => (
-                  <div className="table-row" key={idx}>
-                    <span>{item.productName || "-"}</span>
-                    <span>{item.quantity || 0}</span>
-                    <span>{formatInr.format(item.unitPrice || 0)}</span>
-                    <span>{formatInr.format(item.taxAmount || 0)}</span>
-                    <span>{formatInr.format(item.lineTotal || 0)}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="invoice-totals-section">
-            <div className="invoice-total-row">
-              <span>Subtotal:</span>
-              <span>{formatInr.format(selectedInvoice.subTotal || 0)}</span>
-            </div>
-            {selectedInvoice.discountAmount > 0 && (
-              <>
-                <div className="invoice-total-row">
-                  <span>Discount ({selectedInvoice.discountType === "flat" ? "Flat" : selectedInvoice.discountType === "percent" ? `${selectedInvoice.discountValue || 0}%` : ""}):</span>
-                  <span className="discount">-{formatInr.format(selectedInvoice.discountAmount || 0)}</span>
-                </div>
-              </>
-            )}
-            {(selectedInvoice.taxType === "cgst_sgst" || !selectedInvoice.taxType) && (
-              <>
-                <div className="invoice-total-row">
-                  <span>CGST:</span>
-                  <span>{formatInr.format((selectedInvoice.taxTotal || 0) / 2)}</span>
-                </div>
-                <div className="invoice-total-row">
-                  <span>SGST:</span>
-                  <span>{formatInr.format((selectedInvoice.taxTotal || 0) / 2)}</span>
-                </div>
-              </>
-            )}
-            {selectedInvoice.taxType === "igst" && (
-              <div className="invoice-total-row">
-                <span>IGST:</span>
-                <span>{formatInr.format(selectedInvoice.taxTotal || 0)}</span>
-              </div>
-            )}
-            {selectedInvoice.taxType === "vat" && (
-              <div className="invoice-total-row">
-                <span>VAT:</span>
-                <span>{formatInr.format(selectedInvoice.taxTotal || 0)}</span>
-              </div>
-            )}
-            {selectedInvoice.taxType === "gst" && (
-              <div className="invoice-total-row">
-                <span>GST:</span>
-                <span>{formatInr.format(selectedInvoice.taxTotal || 0)}</span>
-              </div>
-            )}
-            {selectedInvoice.taxType !== "none" && (
-              <div className="invoice-total-row">
-                <span>Total Tax:</span>
-                <span>{formatInr.format(selectedInvoice.taxTotal || 0)}</span>
-              </div>
-            )}
-            <div className="invoice-total-row grand-total">
-              <span>Grand Total:</span>
-              <span>{formatInr.format(selectedInvoice.grandTotal || 0)}</span>
-            </div>
-            <div className="invoice-total-row">
-              <span>Paid Amount:</span>
-              <span>{formatInr.format(selectedInvoice.paidAmount || 0)}</span>
-            </div>
-            <div className="invoice-total-row">
-              <span>Outstanding:</span>
-              <span>{formatInr.format(selectedInvoice.outstandingAmount || 0)}</span>
-            </div>
-            {selectedInvoice.changeAmount > 0 && (
-              <div className="invoice-total-row">
-                <span>Change:</span>
-                <span>{formatInr.format(selectedInvoice.changeAmount || 0)}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="invoice-items-section invoice-payment-section">
-            <h3>Payment History ({(selectedInvoice.paymentHistory || []).length})</h3>
-            <div className="table payment-history-table">
-              <div className="table-row header payment-history-row">
-                <span>Date</span>
-                <span>Method</span>
-                <span>Amount</span>
-              </div>
-              {(selectedInvoice.paymentHistory || []).length === 0 ? (
-                <div className="table-row empty">
-                  <span>No payment received yet.</span>
-                </div>
-              ) : (
-                (selectedInvoice.paymentHistory || []).map((entry, idx) => (
-                  <div className="table-row payment-history-row" key={entry._id || idx}>
-                    <span>{new Date(entry.paidAt || Date.now()).toLocaleString("en-IN")}</span>
-                    <span>{String(entry.method || "cash").toUpperCase()}</span>
-                    <span>{formatInr.format(entry.amount || 0)}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {(selectedInvoice.outstandingAmount || 0) > 0 && (
-            <div className="billing-return-controls invoice-receive-payment-box">
-              <label className="product-field">
-                <span>Receive Payment Amount</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={receivePaymentAmount}
-                  onChange={(event) => setReceivePaymentAmount(event.target.value)}
-                  placeholder="Enter amount"
-                />
-              </label>
-              <label className="product-field">
-                <span>Payment Method</span>
-                <select value={receivePaymentMethod} onChange={(event) => setReceivePaymentMethod(event.target.value)}>
-                  {paymentMethods.map((method) => (
-                    <option key={method} value={method}>
-                      {method.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="billing-actions invoice-receive-actions">
-                <button type="button" className="cta" onClick={receiveInvoicePayment} disabled={isReceivingPayment}>
-                  {isReceivingPayment ? "Saving..." : "Receive Payment"}
+      {/* Sale Return Modal */}
+      {
+        showReturnProcessModal && (
+          <div className="modal-overlay" onClick={() => setShowReturnProcessModal(false)}>
+            <div className="modal-content billing-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Process Sale Return</h2>
+                <button type="button" className="modal-close" onClick={() => {
+                  setShowReturnProcessModal(false);
+                  setSelectedSaleId("");
+                  setSelectedSale(null);
+                  setReturnQuantities({});
+                  setReturnReason("");
+                }}>
+                  ×
                 </button>
               </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
+              <div className="modal-body">
+                <div className="billing-return-controls">
+                  <label className="product-field">
+                    <span>Select Sale</span>
+                    <select value={selectedSaleId} onChange={(event) => handleSaleSelect(event.target.value)}>
+                      <option value="">Choose sale/invoice</option>
+                      {sales.map((sale) => (
+                        <option key={sale.id} value={sale.id}>
+                          {sale.invoiceNo} • {formatInr.format(sale.grandTotal || 0)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-{/* Return Details Modal */ }
-{
-  showReturnDetailsModal && selectedReturn && (
-    <div className="modal-overlay" onClick={() => setShowReturnDetailsModal(false)}>
-      <div className="modal-content invoice-details-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Return Details</h2>
-          <button type="button" className="modal-close" onClick={() => setShowReturnDetailsModal(false)}>
-            ×
-          </button>
-        </div>
-        <div className="modal-body">
-          <div className="return-items-section">
-            <h3>Items Returned ({(selectedReturn.items || []).length})</h3>
-            <div className="table">
-              <div className="table-row header">
-                <span>Product</span>
-                <span>Quantity Returned</span>
-                <span>Unit Refund</span>
-                <span>Line Refund</span>
-              </div>
-              {(selectedReturn.items || []).length === 0 ? (
-                <div className="table-row empty">
-                  <span>No items found.</span>
+                  <label className="product-field">
+                    <span>Refund Method</span>
+                    <select value={refundMethod} onChange={(event) => setRefundMethod(event.target.value)}>
+                      {paymentMethods.map((method) => (
+                        <option key={method} value={method}>
+                          {method.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="product-field billing-return-reason">
+                    <span>Reason</span>
+                    <input value={returnReason} onChange={(event) => setReturnReason(event.target.value)} placeholder="Optional" />
+                  </label>
                 </div>
-              ) : (
-                (selectedReturn.items || []).map((item, idx) => (
-                  <div className="table-row" key={idx}>
-                    <span>{item.productName || "-"}</span>
-                    <span>{item.quantity || 0}</span>
-                    <span>{formatInr.format(item.unitRefund || 0)}</span>
-                    <span>{formatInr.format(item.lineRefund || 0)}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
 
-          <div className="invoice-totals-section">
-            <div className="invoice-total-row">
-              <span>Return No:</span>
-              <span>{selectedReturn.returnNo || "-"}</span>
-            </div>
-            <div className="invoice-total-row">
-              <span>Invoice No:</span>
-              <span>{selectedReturn.invoiceNo || "-"}</span>
-            </div>
-            <div className="invoice-total-row">
-              <span>Refund Method:</span>
-              <span>{(selectedReturn.refundMethod || "cash").toUpperCase()}</span>
-            </div>
-            <div className="invoice-total-row">
-              <span>Reason:</span>
-              <span>{selectedReturn.reason || "-"}</span>
-            </div>
-            <div className="invoice-total-row grand-total">
-              <span>Total Refund:</span>
-              <span>{formatInr.format(selectedReturn.totalRefund || 0)}</span>
+                {selectedSale && (
+                  <div className="table">
+                    <div className="table-row header billing-return-row">
+                      <span>Item</span>
+                      <span className="right">Sold Qty</span>
+                      <span className="right">Return Qty</span>
+                    </div>
+                    {(selectedSale.items || []).map((item) => (
+                      <div className="table-row billing-return-row" key={`${item.productId}-${item.productName}`}>
+                        <span>{item.productName}</span>
+                        <span className="right">{item.quantity}</span>
+                        <span className="right">
+                          <input
+                            type="number"
+                            min="0"
+                            max={item.quantity}
+                            className="billing-qty-input"
+                            value={returnQuantities[item.productId] || "0"}
+                            onChange={(event) =>
+                              setReturnQuantities((prev) => ({
+                                ...prev,
+                                [item.productId]: event.target.value,
+                              }))
+                            }
+                          />
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="billing-actions">
+                  <button type="button" className="cta" onClick={submitReturn} disabled={isReturning || !selectedSale}>
+                    {isReturning ? "Processing..." : "Process Sale Return"}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+        )
+      }
+
+      {/* Invoice Details Modal */}
+      {
+        showInvoiceDetailsModal && selectedInvoice && (
+          <div className="modal-overlay" onClick={() => setShowInvoiceDetailsModal(false)}>
+            <div className="modal-content invoice-details-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Invoice Details</h2>
+                <button type="button" className="modal-close" onClick={() => setShowInvoiceDetailsModal(false)}>
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="invoice-customer-section">
+                  <div className="invoice-customer-row">
+                    <span>Customer:</span>
+                    <span>{selectedInvoice.customer?.name || "-"}</span>
+                  </div>
+                  <div className="invoice-customer-row">
+                    <span>Email:</span>
+                    <span>{selectedInvoice.customer?.email || "-"}</span>
+                  </div>
+                  <div className="invoice-customer-row">
+                    <span>Phone:</span>
+                    <span>{selectedInvoice.customer?.phone || "-"}</span>
+                  </div>
+                </div>
+
+                <div className="invoice-items-section">
+                  <h3>Items ({(selectedInvoice.items || []).length})</h3>
+                  <div className="table">
+                    <div className="table-row header">
+                      <span>Product</span>
+                      <span>Quantity</span>
+                      <span>Price</span>
+                      <span>Tax</span>
+                      <span>Total</span>
+                    </div>
+                    {(selectedInvoice.items || []).length === 0 ? (
+                      <div className="table-row empty">
+                        <span>No items found.</span>
+                      </div>
+                    ) : (
+                      (selectedInvoice.items || []).map((item, idx) => (
+                        <div className="table-row" key={idx}>
+                          <span>{item.productName || "-"}</span>
+                          <span>{item.quantity || 0}</span>
+                          <span>{formatInr.format(item.unitPrice || 0)}</span>
+                          <span>{formatInr.format(item.taxAmount || 0)}</span>
+                          <span>{formatInr.format(item.lineTotal || 0)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="invoice-totals-section">
+                  <div className="invoice-total-row">
+                    <span>Subtotal:</span>
+                    <span>{formatInr.format(selectedInvoice.subTotal || 0)}</span>
+                  </div>
+                  {selectedInvoice.discountAmount > 0 && (
+                    <>
+                      <div className="invoice-total-row">
+                        <span>Discount ({selectedInvoice.discountType === "flat" ? "Flat" : selectedInvoice.discountType === "percent" ? `${selectedInvoice.discountValue || 0}%` : ""}):</span>
+                        <span className="discount">-{formatInr.format(selectedInvoice.discountAmount || 0)}</span>
+                      </div>
+                    </>
+                  )}
+                  {(selectedInvoice.taxType === "cgst_sgst" || !selectedInvoice.taxType) && (
+                    <>
+                      <div className="invoice-total-row">
+                        <span>CGST:</span>
+                        <span>{formatInr.format((selectedInvoice.taxTotal || 0) / 2)}</span>
+                      </div>
+                      <div className="invoice-total-row">
+                        <span>SGST:</span>
+                        <span>{formatInr.format((selectedInvoice.taxTotal || 0) / 2)}</span>
+                      </div>
+                    </>
+                  )}
+                  {selectedInvoice.taxType === "igst" && (
+                    <div className="invoice-total-row">
+                      <span>IGST:</span>
+                      <span>{formatInr.format(selectedInvoice.taxTotal || 0)}</span>
+                    </div>
+                  )}
+                  {selectedInvoice.taxType === "vat" && (
+                    <div className="invoice-total-row">
+                      <span>VAT:</span>
+                      <span>{formatInr.format(selectedInvoice.taxTotal || 0)}</span>
+                    </div>
+                  )}
+                  {selectedInvoice.taxType === "gst" && (
+                    <div className="invoice-total-row">
+                      <span>GST:</span>
+                      <span>{formatInr.format(selectedInvoice.taxTotal || 0)}</span>
+                    </div>
+                  )}
+                  {selectedInvoice.taxType !== "none" && (
+                    <div className="invoice-total-row">
+                      <span>Total Tax:</span>
+                      <span>{formatInr.format(selectedInvoice.taxTotal || 0)}</span>
+                    </div>
+                  )}
+                  <div className="invoice-total-row grand-total">
+                    <span>Grand Total:</span>
+                    <span>{formatInr.format(selectedInvoice.grandTotal || 0)}</span>
+                  </div>
+                  <div className="invoice-total-row">
+                    <span>Paid Amount:</span>
+                    <span>{formatInr.format(selectedInvoice.paidAmount || 0)}</span>
+                  </div>
+                  <div className="invoice-total-row">
+                    <span>Outstanding:</span>
+                    <span>{formatInr.format(selectedInvoice.outstandingAmount || 0)}</span>
+                  </div>
+                  {selectedInvoice.changeAmount > 0 && (
+                    <div className="invoice-total-row">
+                      <span>Change:</span>
+                      <span>{formatInr.format(selectedInvoice.changeAmount || 0)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="invoice-items-section invoice-payment-section">
+                  <h3>Payment History ({(selectedInvoice.paymentHistory || []).length})</h3>
+                  <div className="table payment-history-table">
+                    <div className="table-row header payment-history-row">
+                      <span>Date</span>
+                      <span>Method</span>
+                      <span>Amount</span>
+                    </div>
+                    {(selectedInvoice.paymentHistory || []).length === 0 ? (
+                      <div className="table-row empty">
+                        <span>No payment received yet.</span>
+                      </div>
+                    ) : (
+                      (selectedInvoice.paymentHistory || []).map((entry, idx) => (
+                        <div className="table-row payment-history-row" key={entry._id || idx}>
+                          <span>{new Date(entry.paidAt || Date.now()).toLocaleString("en-IN")}</span>
+                          <span>{String(entry.method || "cash").toUpperCase()}</span>
+                          <span>{formatInr.format(entry.amount || 0)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {(selectedInvoice.outstandingAmount || 0) > 0 && (
+                  <div className="billing-return-controls invoice-receive-payment-box">
+                    <label className="product-field">
+                      <span>Receive Payment Amount</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={receivePaymentAmount}
+                        onChange={(event) => setReceivePaymentAmount(event.target.value)}
+                        placeholder="Enter amount"
+                      />
+                    </label>
+                    <label className="product-field">
+                      <span>Payment Method</span>
+                      <select value={receivePaymentMethod} onChange={(event) => setReceivePaymentMethod(event.target.value)}>
+                        {paymentMethods.map((method) => (
+                          <option key={method} value={method}>
+                            {method.toUpperCase()}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="billing-actions invoice-receive-actions">
+                      <button type="button" className="cta" onClick={receiveInvoicePayment} disabled={isReceivingPayment}>
+                        {isReceivingPayment ? "Saving..." : "Receive Payment"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Return Details Modal */}
+      {
+        showReturnDetailsModal && selectedReturn && (
+          <div className="modal-overlay" onClick={() => setShowReturnDetailsModal(false)}>
+            <div className="modal-content invoice-details-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Return Details</h2>
+                <button type="button" className="modal-close" onClick={() => setShowReturnDetailsModal(false)}>
+                  ×
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="return-items-section">
+                  <h3>Items Returned ({(selectedReturn.items || []).length})</h3>
+                  <div className="table">
+                    <div className="table-row header">
+                      <span>Product</span>
+                      <span>Quantity Returned</span>
+                      <span>Unit Refund</span>
+                      <span>Line Refund</span>
+                    </div>
+                    {(selectedReturn.items || []).length === 0 ? (
+                      <div className="table-row empty">
+                        <span>No items found.</span>
+                      </div>
+                    ) : (
+                      (selectedReturn.items || []).map((item, idx) => (
+                        <div className="table-row" key={idx}>
+                          <span>{item.productName || "-"}</span>
+                          <span>{item.quantity || 0}</span>
+                          <span>{formatInr.format(item.unitRefund || 0)}</span>
+                          <span>{formatInr.format(item.lineRefund || 0)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="invoice-totals-section">
+                  <div className="invoice-total-row">
+                    <span>Return No:</span>
+                    <span>{selectedReturn.returnNo || "-"}</span>
+                  </div>
+                  <div className="invoice-total-row">
+                    <span>Invoice No:</span>
+                    <span>{selectedReturn.invoiceNo || "-"}</span>
+                  </div>
+                  <div className="invoice-total-row">
+                    <span>Refund Method:</span>
+                    <span>{(selectedReturn.refundMethod || "cash").toUpperCase()}</span>
+                  </div>
+                  <div className="invoice-total-row">
+                    <span>Reason:</span>
+                    <span>{selectedReturn.reason || "-"}</span>
+                  </div>
+                  <div className="invoice-total-row grand-total">
+                    <span>Total Refund:</span>
+                    <span>{formatInr.format(selectedReturn.totalRefund || 0)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
     </div >
   );
 }

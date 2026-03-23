@@ -1354,6 +1354,12 @@ h4 {
   margin: 20px 0;
 }
 
+.stock-lines-scroll {
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .table-row.stock-line-row {
   grid-template-columns: 1.6fr 0.8fr 1fr 0.9fr 0.7fr;
   padding: 12px 16px;
@@ -1795,6 +1801,8 @@ h4 {
 
 .stock-modal-content {
   max-width: 980px;
+  max-height: none;
+  overflow-y: visible;
 }
 
 .stock-modal-actions {
@@ -2134,6 +2142,10 @@ h4 {
     gap: 8px;
   }
 
+  .stock-lines-scroll {
+    max-height: 220px;
+  }
+
   .stock-header-actions {
     align-items: stretch;
   }
@@ -2310,8 +2322,8 @@ h4 {
 .create-invoice-modal {
   max-width: 980px !important;
   width: min(980px, 96vw);
-  max-height: 95vh;
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
 }
 
 .create-invoice-card {
@@ -2374,14 +2386,25 @@ h4 {
 }
 
 .create-invoice-modal .invoice-product-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 0;
 }
 
 .create-invoice-modal .invoice-product-row .btn-secondary {
   min-height: 44px;
   padding: 0 18px;
+}
+
+.create-invoice-modal .invoice-product-select {
+  margin: 0;
+}
+
+.create-invoice-modal .invoice-product-select select {
+  width: 100%;
+  min-height: 44px;
 }
 
 .create-invoice-modal .billing-cart {
@@ -2391,10 +2414,122 @@ h4 {
   height: auto;
 }
 
+.create-invoice-modal .billing-cart-lines {
+  gap: 12px;
+}
+
 .create-invoice-modal .billing-cart-table {
-  min-height: 120px;
+  min-height: 140px;
   max-height: 260px;
   align-content: start;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #f8fafc;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.create-invoice-modal .billing-cart-line-row {
+  grid-template-columns: 1.8fr 0.75fr 0.95fr 0.95fr 1fr 0.5fr;
+  padding: 12px 16px;
+  align-items: center;
+}
+
+.create-invoice-modal .billing-cart-line-row.header {
+  background-color: #f3f4f6;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: #6b7280;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.create-invoice-modal .billing-cart-picker-row {
+  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 18px;
+}
+
+.create-invoice-modal .billing-cart-picker-row > * {
+  justify-self: center;
+}
+
+.create-invoice-modal .billing-cart-picker-row .invoice-product-select {
+  grid-column: auto;
+  margin: 0;
+  width: 100%;
+}
+
+.create-invoice-modal .billing-cart-picker-row .invoice-product-select span {
+  display: none;
+}
+
+.create-invoice-modal .billing-cart-picker-row .invoice-product-select select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 12px;
+  text-align: center;
+  text-align-last: center;
+}
+
+.create-invoice-modal .billing-picker-meta {
+  min-height: 48px;
+}
+
+.create-invoice-modal .billing-picker-action {
+  min-height: 48px;
+}
+
+.create-invoice-modal .billing-cart-add-btn {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 10px;
+}
+
+.create-invoice-modal .billing-cart-table .table-row.empty {
+  min-height: 64px;
+  padding: 18px 20px;
+  border-top: 1px solid var(--border);
+  background: #ffffff;
+}
+
+.create-invoice-modal .billing-line-box {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.create-invoice-modal .billing-line-product {
+  justify-content: flex-start;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.create-invoice-modal .billing-line-value {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.create-invoice-modal .billing-cart-line-row .billing-qty-input {
+  width: 100%;
+  height: 42px;
+}
+
+.create-invoice-modal .billing-cart-picker-row .icon-btn.danger:disabled {
+  border-color: #d1d5db;
+  color: #9ca3af;
+  background: #f3f4f6;
 }
 
 .create-invoice-modal .billing-summary-controls {
@@ -2415,6 +2550,10 @@ h4 {
 .create-invoice-modal .billing-actions {
   flex-shrink: 0;
   margin-top: 0;
+}
+
+.create-invoice-modal .invoice-product-row .btn-secondary {
+  border-radius: 10px;
 }
 
 .billing-invoice-footer {
