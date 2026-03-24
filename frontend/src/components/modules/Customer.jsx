@@ -16,6 +16,7 @@ const emptyForm = {
 };
 
 export default function Customer() {
+    const customersPerPage = 20;
     const [customers, setCustomers] = useState([]);
     const [selectedCustomerId, setSelectedCustomerId] = useState("");
     const [purchaseHistory, setPurchaseHistory] = useState([]);
@@ -34,6 +35,7 @@ export default function Customer() {
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [form, setForm] = useState(emptyForm);
+    const [currentPage, setCurrentPage] = useState(1);
 
     const currency = useMemo(
         () =>
@@ -137,6 +139,22 @@ export default function Customer() {
 
         return rows;
     }, [customers, searchQuery, sortBy]);
+
+    const totalPages = Math.max(1, Math.ceil(displayedCustomers.length / customersPerPage));
+    const paginatedCustomers = displayedCustomers.slice(
+        (currentPage - 1) * customersPerPage,
+        currentPage * customersPerPage
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, sortBy]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
 
     const summaryCards = useMemo(() => {
         const creditCustomers = customers.filter((item) => item.allowCredit).length;
@@ -302,10 +320,7 @@ export default function Customer() {
     return (
         <div className="product-page customer-page">
             <div className="product-header">
-                <div className="product-title">
-                    <h1>Customer Management</h1>
-                    <p className="product-subtitle">Manage customers and track outstanding credit</p>
-                </div>
+                
 
                 <div className="product-stats">
                     <div className="stat-card">
@@ -328,12 +343,12 @@ export default function Customer() {
             <section className="card">
                 <div className="card-head">
                     <div>
-                        <p className="card-label">Directory</p>
+                        
                         <h3>All customers ({displayedCustomers.length})</h3>
                     </div>
 
                     <div className="card-head-actions">
-                        <span className="tag">{customers.length} total</span>
+                        
                         <button
                             type="button"
                             className="add-product-btn"
@@ -388,7 +403,7 @@ export default function Customer() {
                                     : "No customers match your search criteria."}
                             </div>
                         ) : (
-                            displayedCustomers.map((customer) => (
+                            paginatedCustomers.map((customer) => (
                                 <div className="table-row customer-row" key={customer.id}>
                                     <span className="product-name " >
                                         {customer.name || "Unnamed Customer"}
@@ -440,6 +455,50 @@ export default function Customer() {
                                 </div>
                             ))
                         )}
+                    </div>
+                )}
+
+                {displayedCustomers.length > 0 && (
+                    <div className="category-pagination">
+                        <span className="tag">
+                            Showing {(currentPage - 1) * customersPerPage + 1}-
+                            {Math.min(currentPage * customersPerPage, displayedCustomers.length)} of {displayedCustomers.length}
+                        </span>
+                        <div className="category-pagination-controls">
+                            <button
+                                type="button"
+                                className="category-page-btn icon"
+                                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                                disabled={currentPage === 1}
+                                aria-label="Previous page"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <polyline points="15 18 9 12 15 6"></polyline>
+                                </svg>
+                            </button>
+                            {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                                <button
+                                    key={`customer-page-${page}`}
+                                    type="button"
+                                    className={`category-page-btn ${page === currentPage ? "active" : ""}`.trim()}
+                                    onClick={() => setCurrentPage(page)}
+                                    aria-current={page === currentPage ? "page" : undefined}
+                                >
+                                    {page}
+                                </button>
+                            ))}
+                            <button
+                                type="button"
+                                className="category-page-btn icon"
+                                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                                disabled={currentPage === totalPages}
+                                aria-label="Next page"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <polyline points="9 18 15 12 9 6"></polyline>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 )}
             </section>

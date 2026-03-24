@@ -1,6 +1,6 @@
 ﻿import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./Login.jsx";
+import App from "./components/auth/Login.jsx";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(

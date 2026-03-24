@@ -23,6 +23,7 @@ const firstDayOfMonth = () => {
 };
 
 export default function Accounting() {
+  const ledgerRowsPerPage = 20;
   const [fromDate, setFromDate] = useState(firstDayOfMonth());
   const [toDate, setToDate] = useState(toDateInput(new Date()));
   const [cashDate, setCashDate] = useState(toDateInput(new Date()));
@@ -43,6 +44,7 @@ export default function Accounting() {
 
   const [status, setStatus] = useState({ state: "idle", message: "" });
   const [isLoading, setIsLoading] = useState(false);
+  const [ledgerPage, setLedgerPage] = useState(1);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -104,14 +106,26 @@ export default function Accounting() {
     loadAccounting();
   }, [query, cashDate]);
 
+  const ledgerTotalPages = Math.max(1, Math.ceil(ledgerRows.length / ledgerRowsPerPage));
+  const paginatedLedgerRows = ledgerRows.slice(
+    (ledgerPage - 1) * ledgerRowsPerPage,
+    ledgerPage * ledgerRowsPerPage
+  );
+
+  useEffect(() => {
+    setLedgerPage(1);
+  }, [query, cashDate]);
+
+  useEffect(() => {
+    if (ledgerPage > ledgerTotalPages) {
+      setLedgerPage(ledgerTotalPages);
+    }
+  }, [ledgerPage, ledgerTotalPages]);
+
   return (
     <div className="product-page accounting-page">
       <div className="product-header">
-        <div className="product-title-bar">
-          <h1>Ledger & Summary</h1>
-          
-        </div>
-        <p className="product-subtitle">Ledger + Revenue + Counts for lightweight financial tracking.</p>
+        
 
         <div className="accounting-filters card">
           <div className="accounting-filter-row">
@@ -193,7 +207,7 @@ export default function Accounting() {
                   <span>No ledger transactions found for selected range.</span>
                 </div>
               ) : (
-                ledgerRows.map((entry) => (
+                paginatedLedgerRows.map((entry) => (
                   <div className="table-row ledger-row" key={entry.id || entry.ledger_id}>
                     <span>{toDateInput(entry.date)}</span>
                     <span>{entry.reference_type}</span>
@@ -205,6 +219,50 @@ export default function Accounting() {
                 ))
               )}
             </div>
+
+            {ledgerRows.length > 0 && (
+              <div className="category-pagination">
+                <span className="tag">
+                  Showing {(ledgerPage - 1) * ledgerRowsPerPage + 1}-
+                  {Math.min(ledgerPage * ledgerRowsPerPage, ledgerRows.length)} of {ledgerRows.length}
+                </span>
+                <div className="category-pagination-controls">
+                  <button
+                    type="button"
+                    className="category-page-btn icon"
+                    onClick={() => setLedgerPage((prev) => Math.max(1, prev - 1))}
+                    disabled={ledgerPage === 1}
+                    aria-label="Previous page"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                  </button>
+                  {Array.from({ length: ledgerTotalPages }, (_, index) => index + 1).map((page) => (
+                    <button
+                      key={`ledger-page-${page}`}
+                      type="button"
+                      className={`category-page-btn ${page === ledgerPage ? "active" : ""}`.trim()}
+                      onClick={() => setLedgerPage(page)}
+                      aria-current={page === ledgerPage ? "page" : undefined}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="category-page-btn icon"
+                    onClick={() => setLedgerPage((prev) => Math.min(ledgerTotalPages, prev + 1))}
+                    disabled={ledgerPage === ledgerTotalPages}
+                    aria-label="Next page"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
         </section>
       </div>
     </div>

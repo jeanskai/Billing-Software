@@ -52,6 +52,7 @@ const buildDateWiseReportFromExpenses = (rows) => {
 };
 
 export default function ExtraExpense({ user }) {
+    const expensesPerPage = 20;
     const [fromDate, setFromDate] = useState(firstDayOfMonth());
     const [toDate, setToDate] = useState(toDateInput(new Date()));
     const [categoryFilter, setCategoryFilter] = useState("");
@@ -67,6 +68,7 @@ export default function ExtraExpense({ user }) {
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [deletingId, setDeletingId] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
 
     const query = useMemo(() => {
         const params = new URLSearchParams();
@@ -134,6 +136,22 @@ export default function ExtraExpense({ user }) {
     useEffect(() => {
         loadData();
     }, [query]);
+
+    const totalPages = Math.max(1, Math.ceil(expenses.length / expensesPerPage));
+    const paginatedExpenses = expenses.slice(
+        (currentPage - 1) * expensesPerPage,
+        currentPage * expensesPerPage
+    );
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [query]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
 
     const resetForm = () => {
         setForm({
@@ -259,11 +277,7 @@ export default function ExtraExpense({ user }) {
     return (
         <div className="product-page accounting-page">
             <div className="product-header">
-                <div className="product-title-bar">
-                    <h1>Extra Expenses</h1>
-                </div>
-
-                <p className="product-subtitle">Record expenses outside stock purchase and track date-wise spending.</p>
+                
 
                 <div className="accounting-filters card">
                     <div className="accounting-filter-row">
@@ -325,7 +339,7 @@ export default function ExtraExpense({ user }) {
                                 <span>No expenses found for selected filters.</span>
                             </div>
                         ) : (
-                            expenses.map((entry) => (
+                            paginatedExpenses.map((entry) => (
                                 <div className="table-row extra-expense-row" key={entry.id}>
                                     <span>{toDateInput(entry.date)}</span>
                                     <span>{entry.category || "General"}</span>
@@ -367,6 +381,50 @@ export default function ExtraExpense({ user }) {
                             ))
                         )}
                     </div>
+
+                    {expenses.length > 0 && (
+                        <div className="category-pagination">
+                            <span className="tag">
+                                Showing {(currentPage - 1) * expensesPerPage + 1}-
+                                {Math.min(currentPage * expensesPerPage, expenses.length)} of {expenses.length}
+                            </span>
+                            <div className="category-pagination-controls">
+                                <button
+                                    type="button"
+                                    className="category-page-btn icon"
+                                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                                    disabled={currentPage === 1}
+                                    aria-label="Previous page"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                        <polyline points="15 18 9 12 15 6"></polyline>
+                                    </svg>
+                                </button>
+                                {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                                    <button
+                                        key={`expense-page-${page}`}
+                                        type="button"
+                                        className={`category-page-btn ${page === currentPage ? "active" : ""}`.trim()}
+                                        onClick={() => setCurrentPage(page)}
+                                        aria-current={page === currentPage ? "page" : undefined}
+                                    >
+                                        {page}
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    className="category-page-btn icon"
+                                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                                    disabled={currentPage === totalPages}
+                                    aria-label="Next page"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                        <polyline points="9 18 15 12 9 6"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </section>
             </div>
 

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import Product from "./Product.jsx";
-import Supplier from "./Supplier.jsx";
-import Category from "./Category.jsx";
-import Billing from "./Billing.jsx";
-import Customer from "./Customer.jsx";
-import Accounting from "./Accounting.jsx";
-import ExtraExpense from "./ExtraExpense.jsx";
-import Reports from "./Reports.jsx";
+import Product from "../modules/Product.jsx";
+import Supplier from "../modules/Supplier.jsx";
+import Category from "../modules/Category.jsx";
+import Billing from "../modules/Billing.jsx";
+import Customer from "../modules/Customer.jsx";
+import Accounting from "../modules/Accounting.jsx";
+import Reports from "../modules/Reports.jsx";
 
 const API_BASE_URL = `http://${window.location.hostname}:4000`;
 
@@ -101,7 +100,7 @@ export default function Dashboard({ user, onLogout }) {
             onClick={() => setView("product")}
             type="button"
           >
-            Products
+            Products & Stock-In
           </button>
           <button
             className={`nav-item ${view === "supplier" ? "active" : ""}`}
@@ -115,9 +114,8 @@ export default function Dashboard({ user, onLogout }) {
             onClick={() => setView("billing")}
             type="button"
           >
-            Billing
+            Sales & Returns
           </button>
-
           <button
             className={`nav-item ${view === "customer" ? "active" : ""}`}
             onClick={() => setView("customer")}
@@ -130,14 +128,7 @@ export default function Dashboard({ user, onLogout }) {
             onClick={() => setView("accounting")}
             type="button"
           >
-            Ledger & Summary
-          </button>
-          <button
-            className={`nav-item ${view === "extra-expense" ? "active" : ""}`}
-            onClick={() => setView("extra-expense")}
-            type="button"
-          >
-            Extra Expense
+            Accounting
           </button>
           <button
             className={`nav-item ${view === "reports" ? "active" : ""}`}
@@ -160,7 +151,7 @@ export default function Dashboard({ user, onLogout }) {
         </div>
       </aside>
 
-      <section className={`content ${view === "category" || view === "product" || view === "supplier" ? "content-full-canvas" : ""}`.trim()}>
+      <section className={`content ${view === "category" || view === "product" || view === "supplier" || view === "accounting" ? "content-full-canvas" : ""}`.trim()}>
         {view === "overview" && (
           <>
             <header className="topbar">
@@ -198,7 +189,6 @@ export default function Dashboard({ user, onLogout }) {
         {view === "billing" && <Billing />}
         {view === "customer" && <Customer />}
         {view === "accounting" && <Accounting />}
-        {view === "extra-expense" && <ExtraExpense user={user} />}
         {view === "reports" && <Reports />}
 
       </section>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE_URL = `http://${window.location.hostname}:4000`;
 
@@ -121,10 +121,10 @@ const normalizeCustomer = (customer) => ({
 const hasCustomerData = (customer) =>
   Boolean((customer?.name || "").trim() || (customer?.email || "").trim() || (customer?.phone || "").trim());
 
-const createProductPickerRow = () => ({
+const createProductPickerRow = (seed = {}) => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  value: "",
-  quantity: "1",
+  value: seed.value || "",
+  quantity: seed.quantity || "1",
 });
 
 export default function Billing() {
@@ -166,6 +166,8 @@ export default function Billing() {
   const [historyTab, setHistoryTab] = useState("invoices");
   const [invoicePage, setInvoicePage] = useState(1);
   const [returnPage, setReturnPage] = useState(1);
+  const billingCartTableRef = useRef(null);
+  const shouldScrollToLatestRowRef = useRef(false);
   const invoicesPerPage = 20;
   const returnsPerPage = 20;
 
@@ -419,8 +421,27 @@ export default function Billing() {
   };
 
   const handleAddProductPickerRow = () => {
+    shouldScrollToLatestRowRef.current = true;
     setProductPickerRows((prev) => [...prev, createProductPickerRow()]);
   };
+
+  useEffect(() => {
+    if (!shouldScrollToLatestRowRef.current) {
+      return;
+    }
+
+    const tableEl = billingCartTableRef.current;
+    if (tableEl) {
+      tableEl.scrollTop = tableEl.scrollHeight;
+      const rows = tableEl.querySelectorAll(".billing-cart-picker-row");
+      const lastRow = rows[rows.length - 1];
+      if (lastRow) {
+        lastRow.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    }
+
+    shouldScrollToLatestRowRef.current = false;
+  }, [productPickerRows]);
 
   const handleProductPickerChange = (rowId, value) => {
     setProductPickerRows((prev) =>
@@ -1187,7 +1208,7 @@ export default function Billing() {
           className={`tab-btn ${historyTab === "invoices" ? "active" : ""}`}
           onClick={() => { setHistoryTab("invoices"); setInvoicePage(1); }}
         >
-          Invoice History
+          Sale History
         </button>
         <button
           type="button"
@@ -1203,7 +1224,7 @@ export default function Billing() {
           <div className="card-head">
             <div>
               
-              <h3>Invoice History ({sales.length})</h3>
+              <h3>Sale History ({sales.length})</h3>
             </div>
             <button type="button" className="add-product-btn" onClick={openCreateInvoiceFlow}>
               Create Invoice
@@ -1451,7 +1472,7 @@ export default function Billing() {
                         {customer.name || "Unnamed Customer"} {customer.phone ? `• ${customer.phone}` : ""}
                       </option>
                     ))}
-                  </select>
+                  </select> 
                 </label>
               </div>
 
@@ -1461,7 +1482,7 @@ export default function Billing() {
                     const cartLineLookup = new Map(cartWithTotals.lines.map((line) => [line.rowId, line]));
 
                     return (
-                  <div className="table billing-cart-table">
+                  <div className="table billing-cart-table" ref={billingCartTableRef}>
                     <div className="table-row header billing-cart-line-row">
                       <span>Item</span>
                       <span className="right">Qty</span>
@@ -1485,7 +1506,7 @@ export default function Billing() {
                             <option value="">Select product</option>
                             {products.map((product) => (
                               <option key={product.id} value={String(product.id)}>
-                                {product.name || "Unnamed Product"} • {formatInr.format(product.price || 0)}
+                                {product.name || "Unnamed Product"}
                               </option>
                             ))}
                           </select>

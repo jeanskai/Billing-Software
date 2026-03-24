@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import Dashboard from "./Dashboard.jsx";
+import Dashboard from "../layout/Dashboard.jsx";
 import ChangePassword from "./ChangePassword.jsx";
 import Register from "./Register.jsx";
-import Product from "./Product.jsx";
 
 const STORAGE_KEY = "billingAuthUser";
 const initialForm = {

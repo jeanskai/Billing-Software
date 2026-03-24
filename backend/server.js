@@ -373,6 +373,45 @@ const SaleReturn = mongoose.model("SaleReturn", saleReturnSchema);
 const Ledger = mongoose.model("Ledger", ledgerSchema);
 const ExtraExpense = mongoose.model("ExtraExpense", extraExpenseSchema);
 
+// ─── Accounting Module Schemas ───────────────────────────────────────────────
+const acctAccountSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, unique: true, trim: true },
+    openingBalance: { type: Number, default: 0 },
+    status: { type: String, enum: ["active", "inactive"], default: "active" },
+  },
+  { timestamps: true }
+);
+
+const acctCategorySchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, unique: true, trim: true },
+    type: { type: String, enum: ["income", "expense"], required: true },
+    status: { type: String, enum: ["active", "inactive"], default: "active" },
+  },
+  { timestamps: true }
+);
+
+const acctEntrySchema = new mongoose.Schema(
+  {
+    type: { type: String, enum: ["income", "expense"], required: true },
+    accountId: { type: mongoose.Schema.Types.ObjectId, ref: "AcctAccount", required: true },
+    categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "AcctCategory", required: true },
+    amount: { type: Number, required: true, min: 0.01 },
+    date: { type: Date, required: true },
+    remarks: { type: String, default: "" },
+  },
+  { timestamps: true }
+);
+
+acctEntrySchema.index({ accountId: 1 });
+acctEntrySchema.index({ categoryId: 1 });
+acctEntrySchema.index({ date: -1 });
+
+const AcctAccount = mongoose.model("AcctAccount", acctAccountSchema);
+const AcctCategory = mongoose.model("AcctCategory", acctCategorySchema);
+const AcctEntry = mongoose.model("AcctEntry", acctEntrySchema);
+
 function generateStockInReference() {
   const timestamp = Date.now().toString(36).toUpperCase();
   const random = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -387,6 +426,77 @@ function generateReference(prefix) {
 
 function roundCurrency(value) {
   return Number((Number(value) || 0).toFixed(2));
+}
+
+function resolveAccountingAccountNameFromPaymentMethod(paymentMethod) {
+  const normalized = typeof paymentMethod === "string" ? paymentMethod.toLowerCase() : "";
+  if (normalized === "card") return "Card";
+  if (normalized === "upi") return "UPI";
+  return "Cash";
+}
+
+async function ensureAccountingAccount(name) {
+  let account = await AcctAccount.findOne({ name }).lean();
+  if (account) return account;
+
+  try {
+    const created = await AcctAccount.create({ name, openingBalance: 0, status: "active" });
+    return created.toObject();
+  } catch (error) {
+    if (error?.code === 11000) {
+      account = await AcctAccount.findOne({ name }).lean();
+      if (account) return account;
+    }
+    throw error;
+  }
+}
+
+async function ensureAccountingCategory(name, type) {
+  let category = await AcctCategory.findOne({ name }).lean();
+  if (category) return category;
+
+  try {
+    const created = await AcctCategory.create({ name, type, status: "active" });
+    return created.toObject();
+  } catch (error) {
+    if (error?.code === 11000) {
+      category = await AcctCategory.findOne({ name }).lean();
+      if (category) return category;
+    }
+    throw error;
+  }
+}
+
+async function postAutoAccountingEntryFromSale({
+  type,
+  paymentMethod,
+  amount,
+  date,
+  remarks,
+  categoryName,
+}) {
+  const normalizedAmount = roundCurrency(amount);
+  if (!normalizedAmount || normalizedAmount <= 0) return;
+
+  try {
+    const accountName = resolveAccountingAccountNameFromPaymentMethod(paymentMethod);
+    const [account, category] = await Promise.all([
+      ensureAccountingAccount(accountName),
+      ensureAccountingCategory(categoryName, type),
+    ]);
+
+    await AcctEntry.create({
+      type,
+      accountId: account._id,
+      categoryId: category._id,
+      amount: normalizedAmount,
+      date: date || new Date(),
+      remarks: typeof remarks === "string" ? remarks : "",
+    });
+  } catch (error) {
+    // Accounting sync should not block billing transactions.
+    console.error("Failed to auto-sync billing transaction to accounting:", error?.message || error);
+  }
 }
 
 async function postLedgerEntry({ date, referenceType, referenceId, description, debitAmount, creditAmount }) {
@@ -2166,6 +2276,15 @@ app.post("/api/billing/sales", async (req, res) => {
       creditAmount: created.grandTotal,
     });
 
+    await postAutoAccountingEntryFromSale({
+      type: "income",
+      paymentMethod: created.paymentMethod,
+      amount: created.paidAmount,
+      date: created.created_at,
+      remarks: `Sale ${created.saleNo} (${created.invoiceNo}) payment received`,
+      categoryName: "Sales Income",
+    });
+
     const customerOutstanding = await syncCustomerOutstanding(created.customerId);
 
     res.status(201).json({
@@ -2295,6 +2414,16 @@ app.post("/api/billing/sales/:saleId/payments", async (req, res) => {
     ];
 
     await sale.save();
+
+    await postAutoAccountingEntryFromSale({
+      type: "income",
+      paymentMethod,
+      amount: appliedAmount,
+      date: paidAt,
+      remarks: `Payment received for sale ${sale.saleNo} (${sale.invoiceNo})`,
+      categoryName: "Sales Income",
+    });
+
     const customerOutstanding = await syncCustomerOutstanding(sale.customerId);
 
     res.status(201).json({
@@ -2517,6 +2646,15 @@ app.post("/api/billing/returns", async (req, res) => {
     });
 
     const customerOutstanding = await syncCustomerOutstanding(sale.customerId);
+
+    await postAutoAccountingEntryFromSale({
+      type: "expense",
+      paymentMethod: normalizedRefundMethod,
+      amount: totalRefund,
+      date: createdReturn.created_at,
+      remarks: `Refund issued for sale ${sale.saleNo} (${sale.invoiceNo}), return ${createdReturn.returnNo}`,
+      categoryName: "Sales Return Refund",
+    });
 
     res.status(201).json({
       ok: true,
@@ -3436,6 +3574,531 @@ app.get("/api/accounting/cash-count", async (req, res) => {
         totalCollection,
       },
     });
+  } catch {
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+// ==================== ACCOUNTING MODULE ENDPOINTS ====================
+
+// ── Accounts ──────────────────────────────────────────────────────────────
+
+app.get("/api/acct/accounts", async (req, res) => {
+  try {
+    const { search, status } = req.query;
+    const match = {};
+    if (search && typeof search === "string" && search.trim()) {
+      match.name = { $regex: search.trim(), $options: "i" };
+    }
+    if (status && ["active", "inactive"].includes(status)) {
+      match.status = status;
+    }
+
+    const accounts = await AcctAccount.find(match).sort({ name: 1 }).lean();
+    const accountIds = accounts.map((a) => a._id);
+
+    const [incomeRows, expenseRows] = await Promise.all([
+      AcctEntry.aggregate([
+        { $match: { accountId: { $in: accountIds }, type: "income" } },
+        { $group: { _id: "$accountId", total: { $sum: "$amount" } } },
+      ]),
+      AcctEntry.aggregate([
+        { $match: { accountId: { $in: accountIds }, type: "expense" } },
+        { $group: { _id: "$accountId", total: { $sum: "$amount" } } },
+      ]),
+    ]);
+
+    const incomeMap = new Map(incomeRows.map((r) => [r._id.toString(), roundCurrency(r.total)]));
+    const expenseMap = new Map(expenseRows.map((r) => [r._id.toString(), roundCurrency(r.total)]));
+
+    const data = accounts.map((a) => {
+      const aid = a._id.toString();
+      const totalIn = incomeMap.get(aid) || 0;
+      const totalOut = expenseMap.get(aid) || 0;
+      return {
+        id: aid,
+        name: a.name,
+        openingBalance: roundCurrency(a.openingBalance || 0),
+        totalIn,
+        totalOut,
+        currentBalance: roundCurrency((a.openingBalance || 0) + totalIn - totalOut),
+        status: a.status,
+        createdAt: a.createdAt,
+      };
+    });
+
+    res.json({ ok: true, data });
+  } catch {
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.post("/api/acct/accounts", async (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  const openingBalance = roundCurrency(Number(req.body?.openingBalance) || 0);
+  const status = ["active", "inactive"].includes(req.body?.status) ? req.body.status : "active";
+
+  if (!name) {
+    res.status(400).json({ ok: false, message: "Account name is required." });
+    return;
+  }
+
+  try {
+    const created = await AcctAccount.create({ name, openingBalance, status });
+    res.status(201).json({
+      ok: true,
+      account: {
+        id: created._id.toString(),
+        name: created.name,
+        openingBalance: created.openingBalance,
+        totalIn: 0,
+        totalOut: 0,
+        currentBalance: created.openingBalance,
+        status: created.status,
+        createdAt: created.createdAt,
+      },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      res.status(400).json({ ok: false, message: "Account name already exists." });
+    } else {
+      res.status(500).json({ ok: false, message: "Server error." });
+    }
+  }
+});
+
+app.put("/api/acct/accounts/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400).json({ ok: false, message: "Invalid account id." });
+    return;
+  }
+
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  const openingBalance = roundCurrency(Number(req.body?.openingBalance) || 0);
+  const status = ["active", "inactive"].includes(req.body?.status) ? req.body.status : "active";
+
+  if (!name) {
+    res.status(400).json({ ok: false, message: "Account name is required." });
+    return;
+  }
+
+  try {
+    const updated = await AcctAccount.findByIdAndUpdate(
+      id,
+      { name, openingBalance, status },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      res.status(404).json({ ok: false, message: "Account not found." });
+      return;
+    }
+
+    const [incomeRow, expenseRow] = await Promise.all([
+      AcctEntry.aggregate([{ $match: { accountId: updated._id, type: "income" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+      AcctEntry.aggregate([{ $match: { accountId: updated._id, type: "expense" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+    ]);
+    const totalIn = roundCurrency(incomeRow?.[0]?.total || 0);
+    const totalOut = roundCurrency(expenseRow?.[0]?.total || 0);
+
+    res.json({
+      ok: true,
+      account: {
+        id: updated._id.toString(),
+        name: updated.name,
+        openingBalance: roundCurrency(updated.openingBalance || 0),
+        totalIn,
+        totalOut,
+        currentBalance: roundCurrency((updated.openingBalance || 0) + totalIn - totalOut),
+        status: updated.status,
+        createdAt: updated.createdAt,
+      },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      res.status(400).json({ ok: false, message: "Account name already exists." });
+    } else {
+      res.status(500).json({ ok: false, message: "Server error." });
+    }
+  }
+});
+
+app.delete("/api/acct/accounts/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400).json({ ok: false, message: "Invalid account id." });
+    return;
+  }
+
+  try {
+    const entryCount = await AcctEntry.countDocuments({ accountId: new mongoose.Types.ObjectId(id) });
+    if (entryCount > 0) {
+      res.status(400).json({ ok: false, message: `Cannot delete account. ${entryCount} entr${entryCount === 1 ? "y is" : "ies are"} linked to it.` });
+      return;
+    }
+
+    const deleted = await AcctAccount.findByIdAndDelete(id).lean();
+    if (!deleted) {
+      res.status(404).json({ ok: false, message: "Account not found." });
+      return;
+    }
+
+    res.json({ ok: true, message: "Account deleted successfully." });
+  } catch {
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.get("/api/acct/accounts/:id/detail", async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400).json({ ok: false, message: "Invalid account id." });
+    return;
+  }
+
+  try {
+    const account = await AcctAccount.findById(id).lean();
+    if (!account) {
+      res.status(404).json({ ok: false, message: "Account not found." });
+      return;
+    }
+
+    const { fromDate, toDate, type, categoryId } = req.query;
+    const dateFilter = buildDateFilter(fromDate, toDate);
+    const entryMatch = { accountId: new mongoose.Types.ObjectId(id) };
+    if (Object.keys(dateFilter).length) entryMatch.date = dateFilter;
+    if (type && ["income", "expense"].includes(type)) entryMatch.type = type;
+    if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
+      entryMatch.categoryId = new mongoose.Types.ObjectId(categoryId);
+    }
+
+    const [entries, incomeAgg, expenseAgg, totalEntryCount] = await Promise.all([
+      AcctEntry.find(entryMatch).sort({ date: -1 }).populate("categoryId", "name type").lean(),
+      AcctEntry.aggregate([{ $match: { accountId: new mongoose.Types.ObjectId(id), type: "income" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+      AcctEntry.aggregate([{ $match: { accountId: new mongoose.Types.ObjectId(id), type: "expense" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+      AcctEntry.countDocuments({ accountId: new mongoose.Types.ObjectId(id) }),
+    ]);
+
+    const totalIn = roundCurrency(incomeAgg?.[0]?.total || 0);
+    const totalOut = roundCurrency(expenseAgg?.[0]?.total || 0);
+
+    res.json({
+      ok: true,
+      account: {
+        id: account._id.toString(),
+        name: account.name,
+        openingBalance: roundCurrency(account.openingBalance || 0),
+        totalIn,
+        totalOut,
+        currentBalance: roundCurrency((account.openingBalance || 0) + totalIn - totalOut),
+        status: account.status,
+        totalEntryCount,
+      },
+      entries: entries.map((e) => ({
+        id: e._id.toString(),
+        type: e.type,
+        categoryName: e.categoryId?.name || "",
+        amount: roundCurrency(e.amount),
+        date: e.date,
+        remarks: e.remarks || "",
+        createdAt: e.createdAt,
+      })),
+    });
+  } catch {
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+// ── Categories ─────────────────────────────────────────────────────────────
+
+app.get("/api/acct/categories", async (req, res) => {
+  try {
+    const { search, type, status } = req.query;
+    const match = {};
+    if (search && typeof search === "string" && search.trim()) {
+      match.name = { $regex: search.trim(), $options: "i" };
+    }
+    if (type && ["income", "expense"].includes(type)) match.type = type;
+    if (status && ["active", "inactive"].includes(status)) match.status = status;
+
+    const cats = await AcctCategory.find(match).sort({ type: 1, name: 1 }).lean();
+    res.json({
+      ok: true,
+      data: cats.map((c) => ({
+        id: c._id.toString(),
+        name: c.name,
+        type: c.type,
+        status: c.status,
+        createdAt: c.createdAt,
+      })),
+    });
+  } catch {
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.post("/api/acct/categories", async (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  const type = ["income", "expense"].includes(req.body?.type) ? req.body.type : null;
+  const status = ["active", "inactive"].includes(req.body?.status) ? req.body.status : "active";
+
+  if (!name) {
+    res.status(400).json({ ok: false, message: "Category name is required." });
+    return;
+  }
+  if (!type) {
+    res.status(400).json({ ok: false, message: "Category type (income/expense) is required." });
+    return;
+  }
+
+  try {
+    const created = await AcctCategory.create({ name, type, status });
+    res.status(201).json({
+      ok: true,
+      category: { id: created._id.toString(), name: created.name, type: created.type, status: created.status, createdAt: created.createdAt },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      res.status(400).json({ ok: false, message: "Category name already exists." });
+    } else {
+      res.status(500).json({ ok: false, message: "Server error." });
+    }
+  }
+});
+
+app.put("/api/acct/categories/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400).json({ ok: false, message: "Invalid category id." });
+    return;
+  }
+
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  const status = ["active", "inactive"].includes(req.body?.status) ? req.body.status : "active";
+
+  if (!name) {
+    res.status(400).json({ ok: false, message: "Category name is required." });
+    return;
+  }
+
+  try {
+    const updated = await AcctCategory.findByIdAndUpdate(id, { name, status }, { new: true }).lean();
+    if (!updated) {
+      res.status(404).json({ ok: false, message: "Category not found." });
+      return;
+    }
+    res.json({
+      ok: true,
+      category: { id: updated._id.toString(), name: updated.name, type: updated.type, status: updated.status, createdAt: updated.createdAt },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      res.status(400).json({ ok: false, message: "Category name already exists." });
+    } else {
+      res.status(500).json({ ok: false, message: "Server error." });
+    }
+  }
+});
+
+app.delete("/api/acct/categories/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400).json({ ok: false, message: "Invalid category id." });
+    return;
+  }
+
+  try {
+    const entryCount = await AcctEntry.countDocuments({ categoryId: new mongoose.Types.ObjectId(id) });
+    if (entryCount > 0) {
+      res.status(400).json({ ok: false, message: `Cannot delete category. ${entryCount} entr${entryCount === 1 ? "y is" : "ies are"} linked to it.` });
+      return;
+    }
+
+    const deleted = await AcctCategory.findByIdAndDelete(id).lean();
+    if (!deleted) {
+      res.status(404).json({ ok: false, message: "Category not found." });
+      return;
+    }
+
+    res.json({ ok: true, message: "Category deleted successfully." });
+  } catch {
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+// ── Entries ────────────────────────────────────────────────────────────────
+
+app.get("/api/acct/entries", async (req, res) => {
+  try {
+    const { fromDate, toDate, type, accountId, categoryId, search } = req.query;
+    const dateFilter = buildDateFilter(fromDate, toDate);
+    const match = {};
+    if (Object.keys(dateFilter).length) match.date = dateFilter;
+    if (type && ["income", "expense"].includes(type)) match.type = type;
+    if (accountId && mongoose.Types.ObjectId.isValid(accountId)) {
+      match.accountId = new mongoose.Types.ObjectId(accountId);
+    }
+    if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
+      match.categoryId = new mongoose.Types.ObjectId(categoryId);
+    }
+    if (search && typeof search === "string" && search.trim()) {
+      match.remarks = { $regex: search.trim(), $options: "i" };
+    }
+
+    const entries = await AcctEntry.find(match)
+      .sort({ date: -1, createdAt: -1 })
+      .populate("accountId", "name")
+      .populate("categoryId", "name type")
+      .lean();
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    for (const e of entries) {
+      if (e.type === "income") totalIncome += e.amount || 0;
+      else totalExpense += e.amount || 0;
+    }
+    totalIncome = roundCurrency(totalIncome);
+    totalExpense = roundCurrency(totalExpense);
+
+    res.json({
+      ok: true,
+      summary: {
+        totalIncome,
+        totalExpense,
+        net: roundCurrency(totalIncome - totalExpense),
+        count: entries.length,
+      },
+      data: entries.map((e) => ({
+        id: e._id.toString(),
+        type: e.type,
+        accountId: e.accountId?._id?.toString() || "",
+        accountName: e.accountId?.name || "",
+        categoryId: e.categoryId?._id?.toString() || "",
+        categoryName: e.categoryId?.name || "",
+        amount: roundCurrency(e.amount),
+        date: e.date,
+        remarks: e.remarks || "",
+        createdAt: e.createdAt,
+      })),
+    });
+  } catch {
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.post("/api/acct/entries", async (req, res) => {
+  const type = ["income", "expense"].includes(req.body?.type) ? req.body.type : null;
+  const accountId = req.body?.accountId;
+  const categoryId = req.body?.categoryId;
+  const amount = roundCurrency(Number(req.body?.amount));
+  const date = req.body?.date ? new Date(req.body.date) : null;
+  const remarks = typeof req.body?.remarks === "string" ? req.body.remarks.trim() : "";
+
+  if (!type) { res.status(400).json({ ok: false, message: "Entry type (income/expense) is required." }); return; }
+  if (!accountId || !mongoose.Types.ObjectId.isValid(accountId)) { res.status(400).json({ ok: false, message: "Valid account is required." }); return; }
+  if (!categoryId || !mongoose.Types.ObjectId.isValid(categoryId)) { res.status(400).json({ ok: false, message: "Valid category is required." }); return; }
+  if (!amount || amount <= 0) { res.status(400).json({ ok: false, message: "Amount must be greater than zero." }); return; }
+  if (!date || Number.isNaN(date.getTime())) { res.status(400).json({ ok: false, message: "Valid date is required." }); return; }
+
+  try {
+    const [account, category] = await Promise.all([
+      AcctAccount.findById(accountId).lean(),
+      AcctCategory.findById(categoryId).lean(),
+    ]);
+
+    if (!account) { res.status(400).json({ ok: false, message: "Account not found." }); return; }
+    if (account.status === "inactive") { res.status(400).json({ ok: false, message: "Cannot create entry under an inactive account." }); return; }
+    if (!category) { res.status(400).json({ ok: false, message: "Category not found." }); return; }
+    if (category.status === "inactive") { res.status(400).json({ ok: false, message: "Cannot use an inactive category." }); return; }
+    if (category.type !== type) { res.status(400).json({ ok: false, message: `This category is for ${category.type} entries only.` }); return; }
+
+    const created = await AcctEntry.create({ type, accountId, categoryId, amount, date, remarks });
+    res.status(201).json({
+      ok: true,
+      entry: {
+        id: created._id.toString(),
+        type: created.type,
+        accountId,
+        accountName: account.name,
+        categoryId,
+        categoryName: category.name,
+        amount: created.amount,
+        date: created.date,
+        remarks: created.remarks,
+        createdAt: created.createdAt,
+      },
+    });
+  } catch {
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.put("/api/acct/entries/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) { res.status(400).json({ ok: false, message: "Invalid entry id." }); return; }
+
+  const type = ["income", "expense"].includes(req.body?.type) ? req.body.type : null;
+  const accountId = req.body?.accountId;
+  const categoryId = req.body?.categoryId;
+  const amount = roundCurrency(Number(req.body?.amount));
+  const date = req.body?.date ? new Date(req.body.date) : null;
+  const remarks = typeof req.body?.remarks === "string" ? req.body.remarks.trim() : "";
+
+  if (!type) { res.status(400).json({ ok: false, message: "Entry type is required." }); return; }
+  if (!accountId || !mongoose.Types.ObjectId.isValid(accountId)) { res.status(400).json({ ok: false, message: "Valid account is required." }); return; }
+  if (!categoryId || !mongoose.Types.ObjectId.isValid(categoryId)) { res.status(400).json({ ok: false, message: "Valid category is required." }); return; }
+  if (!amount || amount <= 0) { res.status(400).json({ ok: false, message: "Amount must be greater than zero." }); return; }
+  if (!date || Number.isNaN(date.getTime())) { res.status(400).json({ ok: false, message: "Valid date is required." }); return; }
+
+  try {
+    const [account, category] = await Promise.all([
+      AcctAccount.findById(accountId).lean(),
+      AcctCategory.findById(categoryId).lean(),
+    ]);
+
+    if (!account) { res.status(400).json({ ok: false, message: "Account not found." }); return; }
+    if (account.status === "inactive") { res.status(400).json({ ok: false, message: "Cannot use an inactive account." }); return; }
+    if (!category) { res.status(400).json({ ok: false, message: "Category not found." }); return; }
+    if (category.status === "inactive") { res.status(400).json({ ok: false, message: "Cannot use an inactive category." }); return; }
+    if (category.type !== type) { res.status(400).json({ ok: false, message: `This category is for ${category.type} entries only.` }); return; }
+
+    const updated = await AcctEntry.findByIdAndUpdate(
+      id,
+      { type, accountId, categoryId, amount, date, remarks },
+      { new: true }
+    ).lean();
+
+    if (!updated) { res.status(404).json({ ok: false, message: "Entry not found." }); return; }
+
+    res.json({
+      ok: true,
+      entry: {
+        id: updated._id.toString(),
+        type: updated.type,
+        accountId,
+        accountName: account.name,
+        categoryId,
+        categoryName: category.name,
+        amount: updated.amount,
+        date: updated.date,
+        remarks: updated.remarks,
+        createdAt: updated.createdAt,
+      },
+    });
+  } catch {
+    res.status(500).json({ ok: false, message: "Server error." });
+  }
+});
+
+app.delete("/api/acct/entries/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) { res.status(400).json({ ok: false, message: "Invalid entry id." }); return; }
+
+  try {
+    const deleted = await AcctEntry.findByIdAndDelete(id).lean();
+    if (!deleted) { res.status(404).json({ ok: false, message: "Entry not found." }); return; }
+    res.json({ ok: true, message: "Entry deleted successfully." });
   } catch {
     res.status(500).json({ ok: false, message: "Server error." });
   }
