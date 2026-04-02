@@ -592,7 +592,7 @@ export default function Customer() {
                                 </button>
                             </div>
 
-                            <form className="product-form" onSubmit={submitForm}>
+                            <form className="product-form" onSubmit={submitForm} autoComplete="off">
                                 <div className="form-row">
                                     <label className="product-field">
                                         <span>Name *</span>
@@ -602,6 +602,7 @@ export default function Customer() {
                                             placeholder="Enter customer name"
                                             value={form.name}
                                             onChange={onFormChange}
+                                            autoComplete="off"
                                             required
                                         />
                                     </label>
@@ -614,6 +615,7 @@ export default function Customer() {
                                             placeholder="Enter customer phone number"
                                             value={form.phone}
                                             onChange={onFormChange}
+                                            autoComplete="off"
                                             required
                                         />
                                     </label>
@@ -628,6 +630,7 @@ export default function Customer() {
                                             placeholder="Enter customer email"
                                             value={form.email}
                                             onChange={onFormChange}
+                                            autoComplete="off"
                                             required
                                         />
                                     </label>
@@ -640,6 +643,7 @@ export default function Customer() {
                                             placeholder="Enter GST number"
                                             onChange={onFormChange}
                                             value={form.gstNumber}
+                                            autoComplete="off"
                                         />
                                     </label>
                                 </div>
@@ -653,6 +657,7 @@ export default function Customer() {
                                             placeholder="Enter customer address"
                                             value={form.address}
                                             onChange={onFormChange}
+                                            autoComplete="off"
                                         />
                                     </label>
 
@@ -664,6 +669,7 @@ export default function Customer() {
                                             placeholder="Enter city"
                                             value={form.city}
                                             onChange={onFormChange}
+                                            autoComplete="off"
                                         />
                                     </label>
                                 </div>
@@ -677,6 +683,7 @@ export default function Customer() {
                                             placeholder="Enter state"
                                             value={form.state}
                                             onChange={onFormChange}
+                                            autoComplete="off"
                                         />
                                     </label>
 
@@ -688,6 +695,7 @@ export default function Customer() {
                                             placeholder="Enter pincode"
                                             value={form.pincode}
                                             onChange={onFormChange}
+                                            autoComplete="off"
                                         />
                                     </label>
                                 </div>
@@ -707,6 +715,7 @@ export default function Customer() {
                                             name="creditLimit"
                                             value={form.creditLimit}
                                             onChange={onFormChange}
+                                            autoComplete="off"
                                             disabled={!form.allowCredit}
                                         />
                                     </label>

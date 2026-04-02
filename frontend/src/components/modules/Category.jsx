@@ -192,10 +192,12 @@ export default function Category() {
         return parent ? parent.name : "-";
     };
 
-    const filteredCategories = categories.filter((category) => {
-        const matchesStatus = filterStatus === "all" || category.status === filterStatus;
-        return matchesStatus;
-    });
+    const filteredCategories = categories
+        .filter((category) => {
+            const matchesStatus = filterStatus === "all" || category.status === filterStatus;
+            return matchesStatus;
+        })
+        .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }));
 
     const totalPages = Math.max(1, Math.ceil(filteredCategories.length / categoriesPerPage));
     const paginatedCategories = filteredCategories.slice(
@@ -218,28 +220,6 @@ export default function Category() {
 
     return (
         <div className="product-page category-page">
-            <div className="product-header">
-            
-                <div className="product-stats">
-                    <div className="stat-card">
-                        <div className="stat-value">{categories.length}</div>
-                        <div className="stat-label">Total Categories</div>
-                    </div>
-                    <div className="stat-card">
-                        <div className="stat-value" style={{ color: "#16a34a" }}>
-                            {activeCount}
-                        </div>
-                        <div className="stat-label">Active</div>
-                    </div>
-                    <div className="stat-card">
-                        <div className="stat-value" style={{ color: "#dc2626" }}>
-                            {inactiveCount}
-                        </div>
-                        <div className="stat-label">Inactive</div>
-                    </div>
-                </div>
-            </div>
-
             <div className="product-content">
                 {/* Model Overlay */}
                 {showFormModal && (
@@ -260,7 +240,7 @@ export default function Category() {
                                     </button>
                                 </div>
 
-                                <form className="product-form" onSubmit={handleAddCategory}>
+                                <form className="product-form" onSubmit={handleAddCategory} autoComplete="off">
                                     <div className="form-row">
                                         <label className="product-field">
                                             <span>Category Name *</span>
@@ -270,6 +250,7 @@ export default function Category() {
                                                 placeholder="Enter category name"
                                                 value={categoryForm.name}
                                                 onChange={handleCategoryChange}
+                                                autoComplete="off"
                                                 required
                                             />
                                         </label>
@@ -282,6 +263,7 @@ export default function Category() {
                                                 placeholder="auto-generation (CAT001, CAT002...)"
                                                 value={categoryForm.categoryCode}
                                                 onChange={handleCategoryChange}
+                                                autoComplete="off"
                                                 style={{ textTransform: "uppercase" }}
                                             />
                                         </label>
@@ -309,6 +291,7 @@ export default function Category() {
                                                 placeholder="Enter category description"
                                                 value={categoryForm.description}
                                                 onChange={handleCategoryChange}
+                                                autoComplete="off"
                                                 rows="3"
                                                 style={{ fontFamily: "inherit", padding: "10px", borderRadius: "8px", border: "1px solid var(--border)" }}
                                             />

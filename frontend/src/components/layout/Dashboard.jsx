@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Product from "../modules/Product.jsx";
 import Supplier from "../modules/Supplier.jsx";
 import Category from "../modules/Category.jsx";
@@ -7,65 +7,54 @@ import Customer from "../modules/Customer.jsx";
 import Accounting from "../modules/Accounting.jsx";
 import Reports from "../modules/Reports.jsx";
 
-const API_BASE_URL = `http://${window.location.hostname}:4000`;
+const viewPathMap = {
+  category: "/dashboard/category",
+  product: "/dashboard/product",
+  supplier: "/dashboard/supplier",
+  billing: "/dashboard/billing",
+  customer: "/dashboard/customer",
+  accounting: "/dashboard/accounting",
+  reports: "/dashboard/reports",
+};
 
-const emptyData = {
-  kpis: {
-    totalRevenue: 0,
-    outstanding: 0,
-    overdueCount: 0,
-    paidThisMonth: 0,
-  },
-  recentInvoices: [],
-  recentPayments: [],
-  revenueByCategory: [],
+const pathViewMap = Object.entries(viewPathMap).reduce((acc, [viewKey, path]) => {
+  acc[path] = viewKey;
+  return acc;
+}, {});
+
+const resolveViewFromPath = (pathname) => {
+  if (pathname === "/dashboard") {
+    return "category";
+  }
+  return pathViewMap[pathname] || "category";
 };
 
 export default function Dashboard({ user, onLogout }) {
-  const [data, setData] = useState(emptyData);
-  const [status, setStatus] = useState({ state: "loading", message: "" });
-  const [view, setView] = useState("overview");
+  const [view, setView] = useState(() => resolveViewFromPath(window.location.pathname));
 
-  const currency = useMemo(
-    () =>
-      new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency: "INR",
-        maximumFractionDigits: 2,
-      }),
-    []
-  );
+  const setViewWithUrl = (nextView) => {
+    const nextPath = viewPathMap[nextView] || viewPathMap.category;
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
+    setView(nextView);
+  };
 
   useEffect(() => {
-    let active = true;
-
-    const load = async () => {
-      setStatus({ state: "loading", message: "" });
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/dashboard`);
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.message || "Failed to load dashboard.");
-        }
-        if (active) {
-          setData(payload);
-          setStatus({ state: "ready", message: "" });
-        }
-      } catch (error) {
-        if (active) {
-          setStatus({
-            state: "error",
-            message: error.message || "Failed to load dashboard.",
-          });
-        }
-      }
+    const syncViewFromLocation = () => {
+      setView(resolveViewFromPath(window.location.pathname));
     };
 
-    load();
+    const expectedPath = viewPathMap[view] || viewPathMap.category;
+    if (window.location.pathname !== expectedPath) {
+      window.history.replaceState({}, "", expectedPath);
+    }
+
+    window.addEventListener("popstate", syncViewFromLocation);
     return () => {
-      active = false;
+      window.removeEventListener("popstate", syncViewFromLocation);
     };
-  }, []);
+  }, [view]);
 
 
 
@@ -82,57 +71,50 @@ export default function Dashboard({ user, onLogout }) {
 
         <nav className="nav">
           <button
-            className={`nav-item ${view === "overview" ? "active" : ""}`}
-            onClick={() => setView("overview")}
-            type="button"
-          >
-            Dashboard
-          </button>
-          <button
             className={`nav-item ${view === "category" ? "active" : ""}`}
-            onClick={() => setView("category")}
+            onClick={() => setViewWithUrl("category")}
             type="button"
           >
             Categories
           </button>
           <button
             className={`nav-item ${view === "product" ? "active" : ""}`}
-            onClick={() => setView("product")}
+            onClick={() => setViewWithUrl("product")}
             type="button"
           >
             Products & Stock-In
           </button>
           <button
             className={`nav-item ${view === "supplier" ? "active" : ""}`}
-            onClick={() => setView("supplier")}
+            onClick={() => setViewWithUrl("supplier")}
             type="button"
           >
             Suppliers
           </button>
           <button
             className={`nav-item ${view === "billing" ? "active" : ""}`}
-            onClick={() => setView("billing")}
+            onClick={() => setViewWithUrl("billing")}
             type="button"
           >
             Sales & Returns
           </button>
           <button
             className={`nav-item ${view === "customer" ? "active" : ""}`}
-            onClick={() => setView("customer")}
+            onClick={() => setViewWithUrl("customer")}
             type="button"
           >
             Customers
           </button>
           <button
             className={`nav-item ${view === "accounting" ? "active" : ""}`}
-            onClick={() => setView("accounting")}
+            onClick={() => setViewWithUrl("accounting")}
             type="button"
           >
             Accounting
           </button>
           <button
             className={`nav-item ${view === "reports" ? "active" : ""}`}
-            onClick={() => setView("reports")}
+            onClick={() => setViewWithUrl("reports")}
             type="button"
           >
             Reports
@@ -152,37 +134,6 @@ export default function Dashboard({ user, onLogout }) {
       </aside>
 
       <section className={`content ${view === "category" || view === "product" || view === "supplier" || view === "accounting" ? "content-full-canvas" : ""}`.trim()}>
-        {view === "overview" && (
-          <>
-            <header className="topbar">
-              <div>
-                <p className="eyebrow">Dashboard</p>
-                <h1>Billing operations snapshot</h1>
-              </div>
-              <div className="topbar-actions">
-                
-              </div>
-            </header>
-
-            <section className="stack">
-              {status.state === "loading" && (
-                <div className="alert">Loading dashboard data...</div>
-              )}
-              {status.state === "error" && (
-                <div className="alert">{status.message}</div>
-              )}
-              {status.state === "ready" && (
-                <div className="card">
-                  <p className="card-label">Overview</p>
-                  <h3 className="list-title">Welcome back, {user?.name || "Admin"}</h3>
-                  <p className="card-sub">
-                    Billing operations dashboard for managing invoices and payments.
-                  </p>
-                </div>
-              )}
-            </section>
-          </>
-        )}
         {view === "category" && <Category />}
         {view === "product" && <Product />}
         {view === "supplier" && <Supplier />}

@@ -34,7 +34,7 @@ export default function Product() {
     const [productMessage, setProductMessage] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [sortBy, setSortBy] = useState("recent");
+    const [sortBy, setSortBy] = useState("name");
     const [editingId, setEditingId] = useState(null);
     const [filterCategory, setFilterCategory] = useState("all");
     const [stockFilter, setStockFilter] = useState("all");
@@ -66,6 +66,11 @@ export default function Product() {
                 maximumFractionDigits: 2,
             }),
         []
+    );
+
+    const sortedCategories = useMemo(
+        () => [...categoriesList].sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })),
+        [categoriesList]
     );
 
     // Load products, suppliers, and stock-in history on mount
@@ -213,7 +218,7 @@ export default function Product() {
         }
     };
 
-    const handleDeleteProduct = async (id, name) => {
+    const handleDeleteProduct = async (id) => {
 
 
         try {
@@ -292,35 +297,6 @@ export default function Product() {
             setScanMessage("Error searching for product.");
             setTimeout(() => setScanMessage(""), 3000);
             setBarcodeScanner("");
-        }
-    };
-
-    const handleBulkUpdateThreshold = async () => {
-        if (!window.confirm("Update all products' low stock threshold to 50?")) {
-            return;
-        }
-
-        try {
-            setProductMessage("Updating all products...");
-            const response = await fetch(`${API_BASE_URL}/api/products/bulk/update-threshold`, {
-                method: "PATCH",
-            });
-            const payload = await response.json();
-            if (!response.ok) {
-                throw new Error(payload.message || "Failed to update products.");
-            }
-
-            // Reload products to get updated data
-            const reloadResponse = await fetch(`${API_BASE_URL}/api/products`);
-            const reloadPayload = await reloadResponse.json();
-            if (reloadResponse.ok) {
-                setProducts(reloadPayload.data || []);
-            }
-
-            setProductMessage(`Successfully updated ${payload.modifiedCount} products!`);
-            setTimeout(() => setProductMessage(""), 3000);
-        } catch (error) {
-            setProductMessage(error.message || "Failed to update products.");
         }
     };
 
@@ -553,7 +529,7 @@ export default function Product() {
     return (
         <div className="product-page inventory-page">
             <div className="product-header">
-                
+
 
                 <div className="product-stats">
                     <div className="stat-card">
@@ -604,7 +580,7 @@ export default function Product() {
                                     <div className="card">
                                         <div className="card-head">
                                             <div>
-                                                
+
                                                 <h3>{editingId ? "Update product details" : "Create new product"}</h3>
                                             </div>
                                             <button
@@ -616,7 +592,7 @@ export default function Product() {
                                             </button>
                                         </div>
 
-                                        <form className="product-form" onSubmit={handleAddProduct}>
+                                        <form className="product-form" onSubmit={handleAddProduct} autoComplete="off">
                                             <div className="form-row">
                                                 <label className="product-field">
                                                     <span>Product Name *</span>
@@ -626,6 +602,7 @@ export default function Product() {
                                                         placeholder="Enter product name"
                                                         value={productForm.name}
                                                         onChange={handleProductChange}
+                                                        autoComplete="off"
                                                         required
                                                     />
                                                 </label>
@@ -639,7 +616,7 @@ export default function Product() {
                                                         required
                                                     >
                                                         <option value="">Select category</option>
-                                                        {categoriesList.map((cat) => (
+                                                        {sortedCategories.map((cat) => (
                                                             <option key={cat.id} value={cat.name}>
                                                                 {cat.name}
                                                             </option>
@@ -657,6 +634,7 @@ export default function Product() {
                                                         placeholder="Enter barcode (optional)"
                                                         value={productForm.barcode}
                                                         onChange={handleProductChange}
+                                                        autoComplete="off"
                                                     />
                                                 </label>
 
@@ -668,6 +646,7 @@ export default function Product() {
                                                         placeholder="0"
                                                         value={productForm.lowStockThreshold}
                                                         onChange={handleProductChange}
+                                                        autoComplete="off"
                                                         min="0"
                                                         step="1"
                                                         required
@@ -677,13 +656,14 @@ export default function Product() {
 
                                             <div className="form-row">
                                                 <label className="product-field">
-                                                    <span>Price (₹) *</span>
+                                                    <span>Selling Price (₹) *</span>
                                                     <input
                                                         type="number"
                                                         name="price"
                                                         placeholder="0.00"
                                                         value={productForm.price}
                                                         onChange={handleProductChange}
+                                                        autoComplete="off"
                                                         min="0"
                                                         step="0.01"
                                                         required
@@ -698,6 +678,7 @@ export default function Product() {
                                                         placeholder="0"
                                                         value={productForm.stock}
                                                         onChange={handleProductChange}
+                                                        autoComplete="off"
                                                         min="0"
                                                         step="1"
                                                         required
@@ -730,12 +711,12 @@ export default function Product() {
                         <div className="card">
                             <div className="card-head">
                                 <div>
-                                    
+
                                     <h3>All Products ({displayedProducts.length})</h3>
                                 </div>
 
                                 <div className="card-head-actions">
-                                    
+
                                     <button
                                         className="add-product-btn"
                                         onClick={() => {
@@ -782,7 +763,7 @@ export default function Product() {
                                     onChange={(e) => setFilterCategory(e.target.value)}
                                 >
                                     <option value="all">All Categories</option>
-                                    {categoriesList.map((cat) => (
+                                    {sortedCategories.map((cat) => (
                                         <option key={cat.id} value={cat.name}>{cat.name}</option>
                                     ))}
                                 </select>
@@ -791,8 +772,8 @@ export default function Product() {
                                     value={sortBy}
                                     onChange={(e) => setSortBy(e.target.value)}
                                 >
-                                    <option value="recent">Most Recent</option>
                                     <option value="name">Name (A-Z)</option>
+                                    <option value="recent">Most Recent</option>
                                     <option value="price-low">Price: Low to High</option>
                                     <option value="price-high">Price: High to Low</option>
                                     <option value="stock">Stock: Low to High</option>
@@ -875,7 +856,7 @@ export default function Product() {
                                                         type="button"
                                                         className="icon-btn danger"
                                                         onClick={() =>
-                                                            handleDeleteProduct(product.id, product.name || "this product")
+                                                            handleDeleteProduct(product.id)
                                                         }
                                                         title="Delete product"
                                                     >
@@ -948,7 +929,7 @@ export default function Product() {
                         <div className="card">
                             <div className="card-head">
                                 <div>
-                                    
+
                                     <h3>Recent entries ({stockInHistory.length})</h3>
                                 </div>
                                 <button
@@ -1168,7 +1149,7 @@ export default function Product() {
                                     <div className="card">
                                         <div className="card-head">
                                             <div>
-                                                
+
                                                 <h3>Add purchase details and update inventory</h3>
                                             </div>
                                             <button

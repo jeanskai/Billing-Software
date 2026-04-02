@@ -124,8 +124,11 @@ const hasCustomerData = (customer) =>
 const createProductPickerRow = (seed = {}) => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   value: seed.value || "",
+  searchText: seed.searchText || "",
   quantity: seed.quantity || "1",
 });
+
+const getProductLabel = (product) => product?.name;
 
 export default function Billing() {
   const [products, setProducts] = useState([]);
@@ -250,6 +253,11 @@ export default function Billing() {
       .slice(0, 40);
   }, [products, searchQuery]);
 
+  const sortedProducts = useMemo(
+    () => [...products].sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })),
+    [products]
+  );
+
   const cartWithTotals = useMemo(() => {
     const normalizedDiscountType = normalizeDiscountType(discountType);
     const discountValueNumber = Number(discountValue || 0);
@@ -363,6 +371,7 @@ export default function Billing() {
       {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         value: String(product.id),
+        searchText: getProductLabel(product),
         quantity: "1",
       },
     ]);
@@ -450,7 +459,46 @@ export default function Billing() {
           return row;
         }
 
-        return { ...row, value };
+        const selectedProduct = products.find((product) => String(product.id) === String(value));
+
+        return {
+          ...row,
+          value,
+          searchText: selectedProduct ? getProductLabel(selectedProduct) : "",
+        };
+      })
+    );
+  };
+
+  const handleProductPickerInputChange = (rowId, text) => {
+    const normalized = text.trim().toLowerCase();
+
+    setProductPickerRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== rowId) {
+          return row;
+        }
+
+        if (!normalized) {
+          return { ...row, searchText: text, value: "" };
+        }
+
+        const exactMatch = products.find((product) => {
+          const name = (product.name || "").toLowerCase();
+          const sku = (product.sku || "").toLowerCase();
+          const barcode = (product.barcode || "").toLowerCase();
+          return name === normalized || sku === normalized || barcode === normalized;
+        });
+
+        if (!exactMatch) {
+          return { ...row, searchText: text, value: "" };
+        }
+
+        return {
+          ...row,
+          searchText: text,
+          value: String(exactMatch.id),
+        };
       })
     );
   };
@@ -1482,6 +1530,12 @@ export default function Billing() {
                     const cartLineLookup = new Map(cartWithTotals.lines.map((line) => [line.rowId, line]));
 
                     return (
+                  <>
+                  <datalist id="billing-product-list">
+                    {sortedProducts.map((product) => (
+                      <option key={`billing-product-${product.id}`} value={getProductLabel(product)} />
+                    ))}
+                  </datalist>
                   <div className="table billing-cart-table" ref={billingCartTableRef}>
                     <div className="table-row header billing-cart-line-row">
                       <span>Item</span>
@@ -1499,17 +1553,13 @@ export default function Billing() {
                       <div className="table-row billing-cart-line-row billing-cart-picker-row" key={row.id}>
                         <label className="product-field invoice-product-select">
                           <span>Select Product</span>
-                          <select
-                            value={row.value}
-                            onChange={(event) => handleProductPickerChange(row.id, event.target.value)}
-                          >
-                            <option value="">Select product</option>
-                            {products.map((product) => (
-                              <option key={product.id} value={String(product.id)}>
-                                {product.name || "Unnamed Product"}
-                              </option>
-                            ))}
-                          </select>
+                          <input
+                            type="text"
+                            list="billing-product-list"
+                            placeholder="Select product"
+                            value={row.searchText || getProductLabel(selectedProduct)}
+                            onChange={(event) => handleProductPickerInputChange(row.id, event.target.value)}
+                          />
                         </label>
                           <span className="right">
                             <input
@@ -1536,6 +1586,7 @@ export default function Billing() {
                         );
                       })}
                   </div>
+                  </>
                     );
                   })()}
                   <button type="button" className="btn-secondary billing-cart-add-btn" onClick={handleAddProductPickerRow}>

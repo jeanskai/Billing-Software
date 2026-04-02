@@ -151,7 +151,7 @@ export default function Supplier() {
         }
     };
 
-    const handleDeleteSupplier = async (id, name) => {
+    const handleDeleteSupplier = async (id) => {
         
 
         try {
@@ -263,7 +263,7 @@ export default function Supplier() {
                                     </button>
                                 </div>
 
-                                <form className="product-form" onSubmit={handleAddSupplier}>
+                                <form className="product-form" onSubmit={handleAddSupplier} autoComplete="off">
                         <div className="form-row">
                             <label className="product-field">
                                 <span>Supplier Name *</span>
@@ -273,6 +273,7 @@ export default function Supplier() {
                                     placeholder="Enter supplier company name"
                                     value={supplierForm.name}
                                     onChange={handleSupplierChange}
+                                    autoComplete="off"
                                     required
                                 />
                             </label>
@@ -285,6 +286,7 @@ export default function Supplier() {
                                     placeholder="Enter contact person's name"
                                     value={supplierForm.contactPerson}
                                     onChange={handleSupplierChange}
+                                    autoComplete="off"
                                 />
                             </label>
                         </div>
@@ -298,6 +300,7 @@ export default function Supplier() {
                                     placeholder="Enter contact email"
                                     value={supplierForm.email}
                                     onChange={handleSupplierChange}
+                                    autoComplete="off"
                                     required
                                 />
                             </label>
@@ -310,6 +313,7 @@ export default function Supplier() {
                                     placeholder="Enter contact phone number"
                                     value={supplierForm.phone}
                                     onChange={handleSupplierChange}
+                                    autoComplete="off"
                                     required
                                 />
                             </label>
@@ -324,6 +328,7 @@ export default function Supplier() {
                                     placeholder="Enter supplier address"
                                     value={supplierForm.address}
                                     onChange={handleSupplierChange}
+                                    autoComplete="off"
                                 />
                             </label>
 
@@ -335,6 +340,7 @@ export default function Supplier() {
                                     placeholder="Enter city"
                                     value={supplierForm.city}
                                     onChange={handleSupplierChange}
+                                    autoComplete="off"
                                 />
                             </label>
                         </div>
@@ -348,6 +354,7 @@ export default function Supplier() {
                                     placeholder="Enter state"
                                     value={supplierForm.state}
                                     onChange={handleSupplierChange}
+                                    autoComplete="off"
                                 />
                             </label>
 
@@ -359,6 +366,7 @@ export default function Supplier() {
                                     placeholder="Enter pincode"
                                     value={supplierForm.pincode}
                                     onChange={handleSupplierChange}
+                                    autoComplete="off"
                                 />
                             </label>
                         </div>
@@ -372,6 +380,7 @@ export default function Supplier() {
                                     placeholder="Enter GST number"
                                     value={supplierForm.gstNumber}
                                     onChange={handleSupplierChange}
+                                    autoComplete="off"
                                 />
                             </label>
                         </div>
@@ -499,7 +508,7 @@ export default function Supplier() {
                                                 type="button"
                                                 className="icon-btn danger"
                                                 onClick={() =>
-                                                    handleDeleteSupplier(supplier.id, supplier.name || "this supplier")
+                                                    handleDeleteSupplier(supplier.id)
                                                 }
                                                 title="Delete supplier"
                                             >

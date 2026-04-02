@@ -198,7 +198,7 @@ function EntryModal({ entry, accounts, categories, initialType = "income", onClo
           <h3>{title}</h3>
           <button type="button" className="acc-modal-close" onClick={onClose} aria-label="Close">✕</button>
         </div>
-        <form onSubmit={handleSubmit} className="acc-modal-body">
+        <form onSubmit={handleSubmit} className="acc-modal-body" autoComplete="off">
           {!entry && (
             <div className="acc-type-toggle">
               <button type="button" className={`acc-type-btn ${form.type === "income" ? "income active" : ""}`.trim()} onClick={() => switchType("income")}>
@@ -375,7 +375,7 @@ function CategoryModal({ category, onClose, onSave }) {
           <div className="acc-form-grid">
             <label className="acc-field acc-field-full">
               <span>Category Name *</span>
-              <input type="text" value={form.name} onChange={set("name")} placeholder="e.g. Salary, Rent, Utilities" required />
+              <input type="text" value={form.name} onChange={set("name")} placeholder="e.g. Salary, Rent, Utilities" autoComplete="off" required />
             </label>
             <label className="acc-field">
               <span>Type *</span>
@@ -1103,7 +1103,10 @@ export default function Accounting() {
       const res = await fetch(`${API_BASE_URL}/api/acct/categories`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || "Failed to load categories.");
-      setCategories(json.data || []);
+      const sortedCategories = [...(json.data || [])].sort((a, b) =>
+        (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+      );
+      setCategories(sortedCategories);
     } catch (e) {
       setCategoriesError(e.message);
     } finally {
